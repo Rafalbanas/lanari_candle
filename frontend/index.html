@@ -43,6 +43,7 @@
     }
     .title{
       display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
+      margin-bottom: 12px;
     }
     h1{ margin:0; font-size: 34px; letter-spacing:.2px; }
     .pill{
@@ -52,6 +53,27 @@
       border-radius: 999px;
       color: var(--muted);
       background: rgba(255,255,255,.03);
+    }
+
+    /* Auth Panel */
+    .auth-panel{
+      background: rgba(255,255,255,.04);
+      border: 1px solid var(--border);
+      border-radius: var(--radius2);
+      padding: 10px 14px;
+      display:flex;
+      align-items:center;
+      gap: 10px;
+      flex-wrap:wrap;
+      font-size: 13px;
+    }
+    .auth-input{
+      background: rgba(0,0,0,.3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 8px;
+      width: 140px;
     }
 
     .container{
@@ -311,12 +333,29 @@
     <span class="pill" id="apiBaseLabel"></span>
   </div>
   <p class="sub">Produkty + koszyk. Dodanie tego samego produktu zwiększa qty (jak w sklepach).</p>
+
+  <!-- AUTH UI -->
+  <div class="auth-panel" id="authPanel">
+    <!-- Logged Out -->
+    <div id="authLoggedOut" style="display:flex; gap:8px; align-items:center;">
+      <input id="authEmail" class="auth-input" placeholder="Email" />
+      <input id="authPass" class="auth-input" type="password" placeholder="Hasło" />
+      <button class="btn primary" id="loginBtn" style="padding:6px 12px; font-size:12px;">Login</button>
+      <button class="btn" id="registerBtn" style="padding:6px 12px; font-size:12px;">Rejestracja</button>
+    </div>
+    <!-- Logged In -->
+    <div id="authLoggedIn" style="display:none; gap:12px; align-items:center;">
+      <span>Witaj, <b id="userLabel"></b></span>
+      <button class="btn ghost" id="myOrdersBtn" style="padding:6px 12px; font-size:12px;">Moje zamówienia</button>
+      <button class="btn ghost" id="logoutBtn" style="padding:6px 12px; font-size:12px;">Wyloguj</button>
+    </div>
+  </div>
 </header>
 
 <div class="container">
   <div class="grid">
     <!-- PRODUCTS -->
-    <section class="card">
+    <section class="card" id="productsPanel">
       <div class="card-header">
         <div>
           <h2>Produkty</h2>
@@ -331,6 +370,17 @@
         <div class="products" id="productsList"></div>
         <div class="empty" id="productsEmpty" style="display:none;">Brak produktów. Dodaj je przez API.</div>
         <div class="errbox" id="productsErr"></div>
+      </div>
+    </section>
+
+    <!-- ORDERS (Hidden) -->
+    <section class="card" id="ordersPanel" style="display:none;">
+      <div class="card-header">
+        <h2>Moje zamówienia</h2>
+        <button class="btn ghost" id="closeOrdersBtn">✕ Wróć do sklepu</button>
+      </div>
+      <div class="content">
+        <div class="cart-items" id="ordersList"></div>
       </div>
     </section>
 
@@ -397,9 +447,15 @@
   }
 
   async function api(path, opts = {}) {
+    const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+    const token = localStorage.getItem("lanari_token");
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const res = await fetch(API_BASE + path, {
-      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
       ...opts,
+      headers,
     });
 
     const isJson = (res.headers.get("content-type") || "").includes("application/json");
@@ -433,6 +489,63 @@
     setCartId(cart.id);
     toast("ok", "Koszyk utworzony", `cart_id = ${cart.id}`);
     return cart.id;
+  }
+
+  // === AUTH ===
+  const TOKEN_KEY = "lanari_token";
+  let currentUser = null;
+
+  function setToken(token) {
+    if (!token) localStorage.removeItem(TOKEN_KEY);
+    else localStorage.setItem(TOKEN_KEY, token);
+  }
+
+  async function loadUser() {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      renderAuth(null);
+      return;
+    }
+    try {
+      const user = await api("/api/auth/me");
+      currentUser = user;
+      renderAuth(user);
+    } catch (e) {
+      // token invalid
+      setToken(null);
+      renderAuth(null);
+    }
+  }
+
+  function renderAuth(user) {
+    if (user) {
+      byId("authLoggedOut").style.display = "none";
+      byId("authLoggedIn").style.display = "flex";
+      byId("userLabel").textContent = user.full_name || user.email;
+    } else {
+      byId("authLoggedOut").style.display = "flex";
+      byId("authLoggedIn").style.display = "none";
+      byId("userLabel").textContent = "";
+    }
+  }
+
+  async function doLogin(email, password) {
+    const res = await api("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password })
+    });
+    setToken(res.access_token);
+    await loadUser();
+    toast("ok", "Zalogowano", email);
+  }
+
+  async function doRegister(email, password) {
+    await api("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password, full_name: email.split("@")[0] })
+    });
+    // auto login po rejestracji
+    await doLogin(email, password);
   }
 
   // === state ===
@@ -628,6 +741,39 @@
     }
   }
 
+  async function loadOrders() {
+    try {
+      const orders = await api("/api/orders");
+      const el = byId("ordersList");
+      el.innerHTML = "";
+      
+      if (!orders.length) {
+        el.innerHTML = '<div class="empty">Brak zamówień.</div>';
+        return;
+      }
+
+      for (const o of orders) {
+        const div = document.createElement("div");
+        div.className = "cart-item";
+        div.innerHTML = `
+          <div class="cart-top">
+            <div>
+              <div class="cart-name">Zamówienie #${o.id} <span class="pill" style="font-size:10px; padding:2px 6px;">${o.status}</span></div>
+              <div class="cart-meta">${o.items.length} pozycji • ${o.email}</div>
+            </div>
+            <div class="line-total">${fmtPLN(o.total_pln)}</div>
+          </div>
+          <div style="margin-top:8px; font-size:12px; color:var(--muted);">
+            ${o.items.map(i => `${i.name} ×${i.qty}`).join(", ")}
+          </div>
+        `;
+        el.appendChild(div);
+      }
+    } catch (e) {
+      toast("err", "Błąd", e.message);
+    }
+  }
+
   // === UI events ===
   byId("reloadBtn").addEventListener("click", async () => {
     await loadProducts();
@@ -659,13 +805,76 @@
     renderProducts(productsCache);
   });
 
-  byId("checkoutBtn").addEventListener("click", () => {
-    toast("warn", "Checkout", "Dodamy zaraz (email + imię + idempotency)");
+  byId("checkoutBtn").addEventListener("click", async () => {
+    if (!currentUser) {
+      toast("err", "Błąd", "Musisz się zalogować, aby złożyć zamówienie");
+      return;
+    }
+
+    // Generujemy prosty klucz idempotencyjności
+    const idempotencyKey = Math.random().toString(36).substring(2) + Date.now().toString(36);
+
+    const cid = getCartId();
+    if (!cid) return;
+
+    const payload = {
+      cart_id: cid,
+      email: currentUser.email,
+      full_name: currentUser.full_name || currentUser.email.split("@")[0]
+    };
+
+    try {
+      const order = await api("/api/checkout", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: { "Idempotency-Key": idempotencyKey }
+      });
+
+      toast("ok", "Zamówienie złożone!", `ID: ${order.id} • Status: ${order.status}`);
+      // Czyścimy lokalny koszyk
+      setCartId(null);
+      await loadCart();
+    } catch (e) {
+      toast("err", "Błąd zamówienia", e.message);
+    }
+  });
+
+  // Auth events
+  byId("loginBtn").addEventListener("click", async () => {
+    const email = byId("authEmail").value;
+    const pass = byId("authPass").value;
+    if (!email || !pass) return toast("err", "Błąd", "Podaj email i hasło");
+    try { await doLogin(email, pass); } catch(e) { toast("err", "Błąd logowania", e.message); }
+  });
+
+  byId("registerBtn").addEventListener("click", async () => {
+    const email = byId("authEmail").value;
+    const pass = byId("authPass").value;
+    if (!email || !pass) return toast("err", "Błąd", "Podaj email i hasło");
+    try { await doRegister(email, pass); } catch(e) { toast("err", "Błąd rejestracji", e.message); }
+  });
+
+  byId("logoutBtn").addEventListener("click", () => {
+    setToken(null);
+    renderAuth(null);
+    toast("ok", "Wylogowano", "");
+  });
+
+  byId("myOrdersBtn").addEventListener("click", async () => {
+    await loadOrders();
+    byId("productsPanel").style.display = "none";
+    byId("ordersPanel").style.display = "block";
+  });
+
+  byId("closeOrdersBtn").addEventListener("click", () => {
+    byId("ordersPanel").style.display = "none";
+    byId("productsPanel").style.display = "block";
   });
 
   // init
   (async function init() {
     setCartId(getCartId());
+    await loadUser(); // check auth
     await loadProducts();
     await loadCart();
   })();

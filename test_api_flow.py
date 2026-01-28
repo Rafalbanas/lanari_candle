@@ -7,6 +7,8 @@ from sqlalchemy.pool import StaticPool
 from app.main import app as fastapi_app
 from app.db.database import Base
 from app.db.deps import get_db
+from app.api.deps import get_current_user
+from app.db.models import UserDB
 
 
 @pytest.fixture()
@@ -134,6 +136,10 @@ def test_cart_add_update_delete_flow(client: TestClient):
 
 
 def test_order_creates_and_clears_cart(client: TestClient):
+    # Mock auth user
+    mock_user = UserDB(id=1, email="test@example.com", full_name="Test User", is_active=True)
+    fastapi_app.dependency_overrides[get_current_user] = lambda: mock_user
+
     # Produkt
     r = client.post(
         "/api/products",
@@ -176,9 +182,15 @@ def test_order_creates_and_clears_cart(client: TestClient):
     cart = r.json()
     assert cart["items"] == []
     assert cart["total_pln"] == 0
+    
+    del fastapi_app.dependency_overrides[get_current_user]
 
 
 def test_checkout_idempotency(client: TestClient):
+    # Mock auth user
+    mock_user = UserDB(id=1, email="test@idempotency.com", full_name="Test Idempotency", is_active=True)
+    fastapi_app.dependency_overrides[get_current_user] = lambda: mock_user
+
     # produkt
     r = client.post(
         "/api/products",
@@ -205,6 +217,8 @@ def test_checkout_idempotency(client: TestClient):
     r2 = client.post("/api/checkout", json=payload, headers=headers)
     assert r2.status_code in (200, 201), r2.text
     assert r2.json()["id"] == order_id_1
+
+    del fastapi_app.dependency_overrides[get_current_user]
 
 
 def test_cart_add_same_product_increments_qty(client: TestClient):

@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import select, delete
 
 from app.db.deps import get_db
-from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus
+from app.api.deps import get_current_user
+from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus, UserDB
 from app.schemas.order import OrderCreate, OrderOut, OrderItemOut, CheckoutRequest
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -28,6 +29,7 @@ def _load_cart_or_404(db: Session, cart_id: int) -> CartDB:
 def checkout(
     payload: CheckoutRequest,
     db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
     # 1. Idempotency check
@@ -79,8 +81,8 @@ def checkout(
     try:
         order = OrderDB(
             cart_id=cart.id,
-            email=str(payload.email),
-            full_name=payload.full_name,
+            email=current_user.email,  # Używamy emaila z tokena (bezpieczniej)
+            full_name=current_user.full_name or payload.full_name,  # Preferujemy imię z konta
             total_pln=total_pln,
             status=OrderStatus.NEW,
             idempotency_key=idempotency_key,
@@ -105,10 +107,29 @@ def checkout(
 
 
 @router.post("", response_model=OrderOut, status_code=201)
-def create_order(payload: OrderCreate, db: Session = Depends(get_db)):
+def create_order(
+    payload: OrderCreate,
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user)
+):
     # Legacy wrapper using the new logic
     req = CheckoutRequest(cart_id=payload.cart_id, email=payload.email, full_name=payload.full_name)
-    return checkout(req, db=db, idempotency_key=None)
+    return checkout(req, db=db, current_user=current_user, idempotency_key=None)
+
+
+@router.get("", response_model=list[OrderOut])
+def list_my_orders(
+    db: Session = Depends(get_db),
+    current_user: UserDB = Depends(get_current_user),
+):
+    stmt = (
+        select(OrderDB)
+        .where(OrderDB.email == current_user.email)
+        .options(selectinload(OrderDB.items))
+        .order_by(OrderDB.created_at.desc())
+    )
+    orders = db.execute(stmt).scalars().all()
+    return [_order_out(o) for o in orders]
 
 
 @router.get("/{order_id}", response_model=OrderOut)
