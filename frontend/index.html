@@ -19,6 +19,7 @@
       --warn:#f59e0b;
       --danger:#ef4444;
       --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --shadow-hover: 0 20px 40px rgba(0,0,0,.5);
       --radius: 18px;
       --radius2: 12px;
     }
@@ -316,6 +317,43 @@
       margin-top: 10px;
     }
 
+    /* Gallery / Feed */
+    .feed-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+    .feed-tile {
+      position: relative;
+      aspect-ratio: 1/1;
+      background: #000;
+      border-radius: var(--radius2);
+      overflow: hidden;
+      cursor: pointer;
+      border: 1px solid rgba(255,255,255,.1);
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .feed-tile:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-hover);
+      border-color: rgba(255,255,255,.3);
+    }
+    .feed-tile img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transition: transform .4s ease;
+    }
+    .feed-tile:hover img {
+      transform: scale(1.05);
+    }
+
+    @media (max-width: 900px){ .feed-grid{ grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 520px){ .feed-grid{ grid-template-columns: repeat(1, 1fr); } }
+
+
     @media (max-width: 920px){
       .grid{ grid-template-columns: 1fr; }
       .products{ grid-template-columns: 1fr; }
@@ -354,6 +392,25 @@
 
 <div class="container">
   <div class="grid">
+    <!-- GALLERY / FEED -->
+    <section class="card" style="grid-column: 1 / -1; margin-bottom: 20px;">
+      <div class="card-header">
+        <div>
+          <h2>Galeria</h2>
+          <div class="sub">Inspiracje i nowości.</div>
+        </div>
+        <form id="uploadForm" style="display:flex; gap:8px;">
+          <input type="file" id="uploadFile" accept="image/*" style="display:none" />
+          <button type="button" class="btn" onclick="document.getElementById('uploadFile').click()">+ Dodaj zdjęcie</button>
+          <input type="text" id="uploadCaption" class="search" placeholder="Opis (opcjonalnie)" style="width:160px; display:none;" />
+          <button type="submit" class="btn primary" id="uploadSubmitBtn" style="display:none;">Wyślij</button>
+        </form>
+      </div>
+      <div class="content">
+        <div class="feed-grid" id="feedGrid"></div>
+      </div>
+    </section>
+
     <!-- PRODUCTS -->
     <section class="card" id="productsPanel">
       <div class="card-header">
@@ -422,6 +479,7 @@
   // === konfiguracja ===
   const API_BASE = "http://127.0.0.1:8000";
   document.getElementById("apiBaseLabel").textContent = `Backend: ${API_BASE}`;
+  const STATIC_BASE = API_BASE; // bo mountujemy /static w main.py
 
   // === helpers ===
   const fmtPLN = (grosze) => (grosze / 100).toFixed(2).replace(".", ",") + " zł";
@@ -460,6 +518,16 @@
 
     const isJson = (res.headers.get("content-type") || "").includes("application/json");
     const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => "");
+
+    if (!res.ok) {
+      const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      throw new Error(`${res.status} ${res.statusText}\n${msg}`);
+    }
+    return data;
+  }
+
+  // === koszyk w localStorage ===
+  const CART_KEY = "lanari_cart_id";
 
     if (!res.ok) {
       const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
@@ -774,6 +842,86 @@
     }
   }
 
+  // === GALLERY ===
+  async function loadFeed() {
+    try {
+      const items = await api("/api/media");
+      renderFeed(items);
+    } catch (e) {
+      console.error("Feed error", e);
+    }
+  }
+
+  function renderFeed(items) {
+    const el = byId("feedGrid");
+    el.innerHTML = "";
+    if (!items.length) {
+      el.innerHTML = '<div class="empty" style="grid-column:1/-1">Brak zdjęć w galerii.</div>';
+      return;
+    }
+
+    for (const it of items) {
+      const div = document.createElement("div");
+      div.className = "feed-tile";
+      // URL z bazy jest np. /static/uploads/xyz.jpg -> dodajemy API_BASE
+      const src = it.url.startsWith("http") ? it.url : (STATIC_BASE + it.url);
+      
+      div.innerHTML = `<img src="${src}" alt="${escapeHtml(it.caption)}" title="${escapeHtml(it.caption)}" loading="lazy">`;
+      div.onclick = () => {
+        // Prosty alert/modal na szybko
+        alert(`Opis: ${it.caption || "(brak)"}\nData: ${new Date(it.created_at).toLocaleString()}`);
+      };
+      el.appendChild(div);
+    }
+  }
+
+  // Upload logic
+  const fileInput = byId("uploadFile");
+  const captionInput = byId("uploadCaption");
+  const uploadBtn = byId("uploadSubmitBtn");
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) {
+      captionInput.style.display = "block";
+      uploadBtn.style.display = "inline-flex";
+      captionInput.focus();
+    }
+  });
+
+  byId("uploadForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = fileInput.files[0];
+    if (!file) return;
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("caption", captionInput.value);
+
+    try {
+      // Używamy fetch bezpośrednio dla FormData (api() wrapper ustawia Content-Type: json, co psuje multipart)
+      const token = localStorage.getItem(TOKEN_KEY);
+      const headers = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+
+      const res = await fetch(`${API_BASE}/api/media`, {
+        method: "POST",
+        body: fd,
+        headers
+      });
+      
+      if (!res.ok) throw new Error("Upload failed");
+      
+      toast("ok", "Sukces", "Zdjęcie dodane");
+      fileInput.value = "";
+      captionInput.value = "";
+      captionInput.style.display = "none";
+      uploadBtn.style.display = "none";
+      await loadFeed();
+    } catch (e) {
+      toast("err", "Błąd", e.message);
+    }
+  });
+
   // === UI events ===
   byId("reloadBtn").addEventListener("click", async () => {
     await loadProducts();
@@ -877,6 +1025,7 @@
     await loadUser(); // check auth
     await loadProducts();
     await loadCart();
+    await loadFeed();
   })();
 </script>
 </body>
