@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Lanari Candle — mini sklep</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; max-width: 900px; }
+    h1 { margin: 0 0 12px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
+    .muted { color: #666; font-size: 14px; }
+    .btn { padding: 8px 10px; border-radius: 8px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
+    .btn:hover { background: #f5f5f5; }
+    .btn-primary { border-color: #333; }
+    .list { display: grid; gap: 10px; }
+    .product { display: grid; gap: 6px; padding: 10px; border: 1px solid #eee; border-radius: 10px; }
+    .product-top { display: flex; justify-content: space-between; gap: 12px; }
+    .product-name { font-weight: 600; }
+    .price { font-weight: 700; }
+    .qty { width: 70px; padding: 6px; }
+    .cart-item { display: grid; gap: 6px; padding: 10px; border: 1px solid #eee; border-radius: 10px; }
+    .cart-top { display: flex; justify-content: space-between; gap: 10px; }
+    .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .divider { height: 1px; background: #eee; margin: 12px 0; }
+    .error { color: #b00020; white-space: pre-wrap; font-size: 13px; }
+    input { font: inherit; }
+  </style>
+</head>
+<body>
+  <h1>Lanari Candle — mini sklep</h1>
+  <p class="muted">Produkty + koszyk (HTML + JS). Backend: <span id="apiBaseLabel"></span></p>
+
+  <div class="row">
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h2 style="margin:0;">Produkty</h2>
+        <button class="btn" id="reloadBtn">Odśwież</button>
+      </div>
+      <div class="divider"></div>
+      <div class="list" id="productsList"></div>
+      <div class="error" id="productsErr"></div>
+    </section>
+
+    <section class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <h2 style="margin:0;">Koszyk</h2>
+        <div class="actions">
+          <button class="btn" id="newCartBtn">Nowy koszyk</button>
+          <span class="muted">cart_id: <b id="cartIdLabel">-</b></span>
+        </div>
+      </div>
+      <div class="divider"></div>
+
+      <div class="list" id="cartList"></div>
+
+      <div class="divider"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="muted">Suma</div>
+        <div class="price" id="cartTotal">0 zł</div>
+      </div>
+
+      <div class="error" id="cartErr"></div>
+    </section>
+  </div>
+
+  <script>
+    // === konfiguracja ===
+    const API_BASE = "http://127.0.0.1:8000";
+    document.getElementById("apiBaseLabel").textContent = API_BASE;
+
+    // === helpers ===
+    const fmtPLN = (grosze) => (grosze / 100).toFixed(2).replace(".", ",") + " zł";
+    const byId = (id) => document.getElementById(id);
+
+    async function api(path, opts = {}) {
+      const res = await fetch(API_BASE + path, {
+        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+        ...opts,
+      });
+
+      const isJson = (res.headers.get("content-type") || "").includes("application/json");
+      const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => "");
+
+      if (!res.ok) {
+        const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+        throw new Error(`${res.status} ${res.statusText}\n${msg}`);
+      }
+      return data;
+    }
+
+    // === koszyk w localStorage ===
+    const CART_KEY = "lanari_cart_id";
+
+    function getCartId() {
+      const v = localStorage.getItem(CART_KEY);
+      return v ? Number(v) : null;
+    }
+
+    function setCartId(id) {
+      localStorage.setItem(CART_KEY, String(id));
+      byId("cartIdLabel").textContent = id ?? "-";
+    }
+
+    async function ensureCart() {
+      let cid = getCartId();
+      if (cid) return cid;
+
+      const cart = await api("/api/carts", { method: "POST" });
+      setCartId(cart.id);
+      return cart.id;
+    }
+
+    // === render ===
+    function renderProducts(products) {
+      const el = byId("productsList");
+      el.innerHTML = "";
+
+      for (const p of products) {
+        const card = document.createElement("div");
+        card.className = "product";
+
+        card.innerHTML = `
+          <div class="product-top">
+            <div>
+              <div class="product-name">${escapeHtml(p.name)}</div>
+              <div class="muted">${escapeHtml(p.description || "")}</div>
+            </div>
+            <div class="price">${fmtPLN(p.price_pln)}</div>
+          </div>
+          <div class="actions">
+            <label class="muted">Ilość:</label>
+            <input class="qty" type="number" min="1" value="1" />
+            <button class="btn btn-primary">Dodaj do koszyka</button>
+          </div>
+        `;
+
+        const qtyInput = card.querySelector("input.qty");
+        const btn = card.querySelector("button");
+
+        btn.addEventListener("click", async () => {
+          byId("productsErr").textContent = "";
+          byId("cartErr").textContent = "";
+          try {
+            const cid = await ensureCart();
+            const qty = Number(qtyInput.value || 1);
+            if (!Number.isFinite(qty) || qty <= 0) throw new Error("qty musi być > 0");
+
+            await api(`/api/carts/${cid}/items`, {
+              method: "POST",
+              body: JSON.stringify({ product_id: p.id, qty }),
+            });
+
+            await loadCart();
+          } catch (e) {
+            byId("cartErr").textContent = e.message;
+          }
+        });
+
+        el.appendChild(card);
+      }
+    }
+
+    function renderCart(cart) {
+      byId("cartList").innerHTML = "";
+      byId("cartTotal").textContent = fmtPLN(cart.total_pln || 0);
+
+      if (!cart.items || cart.items.length === 0) {
+        byId("cartList").innerHTML = `<div class="muted">Koszyk pusty</div>`;
+        return;
+      }
+
+      for (const it of cart.items) {
+        const row = document.createElement("div");
+        row.className = "cart-item";
+
+        row.innerHTML = `
+          <div class="cart-top">
+            <div>
+              <div class="product-name">${escapeHtml(it.name)}</div>
+              <div class="muted">Cena: ${fmtPLN(it.unit_price_pln)} • Razem: <b>${fmtPLN(it.line_total_pln)}</b></div>
+            </div>
+          </div>
+          <div class="actions">
+            <label class="muted">Qty:</label>
+            <input class="qty" type="number" min="0" value="${it.qty}" />
+            <button class="btn">Ustaw</button>
+            <button class="btn">Usuń</button>
+          </div>
+        `;
+
+        const qtyInput = row.querySelector("input.qty");
+        const [setBtn, delBtn] = row.querySelectorAll("button");
+
+        setBtn.addEventListener("click", async () => {
+          byId("cartErr").textContent = "";
+          try {
+            const cid = getCartId();
+            const qty = Number(qtyInput.value);
+
+            // Uwaga: wg Twoich zasad PATCH ustawia konkretną ilość
+            // Możesz przyjąć: qty==0 => delete (wiele sklepów tak robi)
+            if (qty === 0) {
+              await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
+            } else {
+              await api(`/api/carts/${cid}/items/${it.id}`, {
+                method: "PATCH",
+                body: JSON.stringify({ qty }),
+              });
+            }
+
+            await loadCart();
+          } catch (e) {
+            byId("cartErr").textContent = e.message;
+          }
+        });
+
+        delBtn.addEventListener("click", async () => {
+          byId("cartErr").textContent = "";
+          try {
+            const cid = getCartId();
+            await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
+            await loadCart();
+          } catch (e) {
+            byId("cartErr").textContent = e.message;
+          }
+        });
+
+        byId("cartList").appendChild(row);
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    // === load ===
+    async function loadProducts() {
+      byId("productsErr").textContent = "";
+      try {
+        const products = await api("/api/products");
+        renderProducts(products);
+      } catch (e) {
+        byId("productsErr").textContent = e.message;
+      }
+    }
+
+    async function loadCart() {
+      byId("cartErr").textContent = "";
+      const cid = getCartId();
+      byId("cartIdLabel").textContent = cid ?? "-";
+      if (!cid) {
+        renderCart({ items: [], total_pln: 0 });
+        return;
+      }
+      try {
+        const cart = await api(`/api/carts/${cid}`);
+        renderCart(cart);
+      } catch (e) {
+        byId("cartErr").textContent = e.message;
+      }
+    }
+
+    // === UI events ===
+    byId("reloadBtn").addEventListener("click", async () => {
+      await loadProducts();
+      await loadCart();
+    });
+
+    byId("newCartBtn").addEventListener("click", async () => {
+      byId("cartErr").textContent = "";
+      try {
+        const cart = await api("/api/carts", { method: "POST" });
+        setCartId(cart.id);
+        await loadCart();
+      } catch (e) {
+        byId("cartErr").textContent = e.message;
+      }
+    });
+
+    // init
+    (async function init() {
+      setCartId(getCartId());
+      await loadProducts();
+      await loadCart();
+    })();
+  </script>
+</body>
+</html>
