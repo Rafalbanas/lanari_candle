@@ -4,291 +4,671 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Lanari Candle — mini sklep</title>
+
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; margin: 24px; max-width: 900px; }
-    h1 { margin: 0 0 12px; }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
-    .card { border: 1px solid #ddd; border-radius: 10px; padding: 16px; }
-    .muted { color: #666; font-size: 14px; }
-    .btn { padding: 8px 10px; border-radius: 8px; border: 1px solid #bbb; background: #fff; cursor: pointer; }
-    .btn:hover { background: #f5f5f5; }
-    .btn-primary { border-color: #333; }
-    .list { display: grid; gap: 10px; }
-    .product { display: grid; gap: 6px; padding: 10px; border: 1px solid #eee; border-radius: 10px; }
-    .product-top { display: flex; justify-content: space-between; gap: 12px; }
-    .product-name { font-weight: 600; }
-    .price { font-weight: 700; }
-    .qty { width: 70px; padding: 6px; }
-    .cart-item { display: grid; gap: 6px; padding: 10px; border: 1px solid #eee; border-radius: 10px; }
-    .cart-top { display: flex; justify-content: space-between; gap: 10px; }
-    .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .divider { height: 1px; background: #eee; margin: 12px 0; }
-    .error { color: #b00020; white-space: pre-wrap; font-size: 13px; }
-    input { font: inherit; }
+    :root{
+      --bg: #0b0d12;
+      --card: rgba(255,255,255,.06);
+      --card2: rgba(255,255,255,.08);
+      --border: rgba(255,255,255,.10);
+      --text: rgba(255,255,255,.92);
+      --muted: rgba(255,255,255,.64);
+      --muted2: rgba(255,255,255,.48);
+      --accent: #7c3aed; /* fiolet */
+      --accent2:#22c55e; /* zielony */
+      --warn:#f59e0b;
+      --danger:#ef4444;
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 18px;
+      --radius2: 12px;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 15% 10%, rgba(124,58,237,.25), transparent 60%),
+        radial-gradient(900px 500px at 85% 0%, rgba(34,197,94,.18), transparent 55%),
+        radial-gradient(900px 600px at 85% 95%, rgba(245,158,11,.12), transparent 60%),
+        var(--bg);
+      min-height:100vh;
+    }
+
+    header{
+      padding: 28px 22px 8px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    .title{
+      display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
+    }
+    h1{ margin:0; font-size: 34px; letter-spacing:.2px; }
+    .pill{
+      font-size:12px;
+      padding:6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(255,255,255,.03);
+    }
+
+    .container{
+      max-width:1100px;
+      margin: 0 auto;
+      padding: 12px 22px 36px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.35fr .85fr;
+      gap: 18px;
+      align-items:start;
+    }
+
+    .card{
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .card-header{
+      padding: 16px 16px 12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap: 12px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .card-header h2{
+      margin:0;
+      font-size: 18px;
+      letter-spacing:.2px;
+    }
+    .sub{
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toolbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .search{
+      width: 220px;
+      max-width: 52vw;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      outline: none;
+    }
+    .search::placeholder{ color: var(--muted2); }
+
+    .btn{
+      appearance:none;
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight:600;
+      letter-spacing:.1px;
+      transition: transform .08s ease, background .15s ease, border-color .15s ease;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      user-select:none;
+    }
+    .btn:hover{ background: rgba(255,255,255,.10); border-color: rgba(255,255,255,.20); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      background: rgba(124,58,237,.22);
+      border-color: rgba(124,58,237,.45);
+    }
+    .btn.primary:hover{
+      background: rgba(124,58,237,.30);
+      border-color: rgba(124,58,237,.65);
+    }
+    .btn.ghost{
+      background: transparent;
+      border-color: rgba(255,255,255,.12);
+    }
+    .btn.danger{
+      background: rgba(239,68,68,.16);
+      border-color: rgba(239,68,68,.35);
+    }
+
+    .content{ padding: 16px; }
+
+    /* Products */
+    .products{
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .product{
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      border-radius: var(--radius2);
+      padding: 12px;
+      display:grid;
+      gap: 10px;
+      min-height: 128px;
+    }
+    .product-top{
+      display:flex;
+      justify-content:space-between;
+      gap: 12px;
+      align-items:flex-start;
+    }
+    .product-name{ font-weight:800; font-size: 15px; line-height:1.2; }
+    .product-desc{ color: var(--muted); font-size: 12.5px; line-height:1.3; margin-top: 4px; }
+    .price-tag{
+      font-weight:900;
+      font-size: 14px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(34,197,94,.14);
+      border: 1px solid rgba(34,197,94,.35);
+      white-space:nowrap;
+    }
+    .product-actions{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap: 10px;
+      flex-wrap:wrap;
+      margin-top:auto;
+    }
+    .qty-wrap{
+      display:flex; align-items:center; gap:8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .qty{
+      width: 74px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.25);
+      color: var(--text);
+      outline:none;
+    }
+
+    /* Cart */
+    .cart-items{ display:grid; gap: 10px; }
+    .cart-item{
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(0,0,0,.18);
+      border-radius: var(--radius2);
+      padding: 12px;
+      display:grid;
+      gap: 10px;
+    }
+    .cart-top{
+      display:flex;
+      justify-content:space-between;
+      gap: 12px;
+      align-items:flex-start;
+    }
+    .cart-name{ font-weight:800; font-size: 14px; line-height:1.2; }
+    .cart-meta{ color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .line-total{
+      font-weight:900;
+      font-size: 13px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(124,58,237,.18);
+      border: 1px solid rgba(124,58,237,.35);
+      white-space:nowrap;
+    }
+    .cart-actions{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap: 10px;
+      flex-wrap:wrap;
+    }
+
+    .summary{
+      margin-top: 14px;
+      border-top: 1px solid rgba(255,255,255,.10);
+      padding-top: 14px;
+      display:grid;
+      gap: 10px;
+    }
+    .sum-row{ display:flex; justify-content:space-between; align-items:center; }
+    .sum-row .label{ color: var(--muted); font-size: 13px; }
+    .sum-row .value{ font-size: 18px; font-weight: 900; }
+
+    .empty{
+      color: var(--muted);
+      font-size: 13px;
+      padding: 18px 0 6px;
+      text-align:center;
+    }
+
+    .toast-wrap{
+      position: fixed;
+      right: 14px;
+      bottom: 14px;
+      display:grid;
+      gap: 10px;
+      z-index: 50;
+    }
+    .toast{
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(10px);
+      border-radius: 14px;
+      padding: 10px 12px;
+      box-shadow: var(--shadow);
+      width: min(360px, calc(100vw - 28px));
+      color: var(--text);
+      font-size: 13px;
+    }
+    .toast .t-title{ font-weight:900; margin-bottom: 2px; }
+    .toast.ok{ border-color: rgba(34,197,94,.35); }
+    .toast.warn{ border-color: rgba(245,158,11,.35); }
+    .toast.err{ border-color: rgba(239,68,68,.35); }
+
+    .errbox{
+      margin-top: 12px;
+      color: rgba(239,68,68,.95);
+      font-size: 12.5px;
+      white-space: pre-wrap;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(239,68,68,.35);
+      background: rgba(239,68,68,.08);
+      display:none;
+    }
+
+    .footer-note{
+      color: var(--muted2);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 920px){
+      .grid{ grid-template-columns: 1fr; }
+      .products{ grid-template-columns: 1fr; }
+      header, .container{ padding-left: 14px; padding-right: 14px; }
+      h1{ font-size: 28px; }
+    }
   </style>
 </head>
+
 <body>
-  <h1>Lanari Candle — mini sklep</h1>
-  <p class="muted">Produkty + koszyk (HTML + JS). Backend: <span id="apiBaseLabel"></span></p>
+<header>
+  <div class="title">
+    <h1>Lanari Candle</h1>
+    <span class="pill">mini sklep • HTML + JS</span>
+    <span class="pill" id="apiBaseLabel"></span>
+  </div>
+  <p class="sub">Produkty + koszyk. Dodanie tego samego produktu zwiększa qty (jak w sklepach).</p>
+</header>
 
-  <div class="row">
+<div class="container">
+  <div class="grid">
+    <!-- PRODUCTS -->
     <section class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-        <h2 style="margin:0;">Produkty</h2>
-        <button class="btn" id="reloadBtn">Odśwież</button>
-      </div>
-      <div class="divider"></div>
-      <div class="list" id="productsList"></div>
-      <div class="error" id="productsErr"></div>
-    </section>
-
-    <section class="card">
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-        <h2 style="margin:0;">Koszyk</h2>
-        <div class="actions">
-          <button class="btn" id="newCartBtn">Nowy koszyk</button>
-          <span class="muted">cart_id: <b id="cartIdLabel">-</b></span>
+      <div class="card-header">
+        <div>
+          <h2>Produkty</h2>
+          <div class="sub">Wybierz ilość i dodaj do koszyka.</div>
+        </div>
+        <div class="toolbar">
+          <input id="search" class="search" placeholder="Szukaj produktu…" />
+          <button class="btn" id="reloadBtn">↻ Odśwież</button>
         </div>
       </div>
-      <div class="divider"></div>
+      <div class="content">
+        <div class="products" id="productsList"></div>
+        <div class="empty" id="productsEmpty" style="display:none;">Brak produktów. Dodaj je przez API.</div>
+        <div class="errbox" id="productsErr"></div>
+      </div>
+    </section>
 
-      <div class="list" id="cartList"></div>
-
-      <div class="divider"></div>
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <div class="muted">Suma</div>
-        <div class="price" id="cartTotal">0 zł</div>
+    <!-- CART -->
+    <aside class="card">
+      <div class="card-header">
+        <div>
+          <h2>Koszyk</h2>
+          <div class="sub">cart_id: <b id="cartIdLabel">-</b></div>
+        </div>
+        <div class="toolbar">
+          <button class="btn primary" id="newCartBtn">＋ Nowy koszyk</button>
+          <button class="btn ghost" id="clearCartIdBtn" title="Zapomnij ten koszyk (localStorage)">⌫</button>
+        </div>
       </div>
 
-      <div class="error" id="cartErr"></div>
-    </section>
+      <div class="content">
+        <div class="cart-items" id="cartList"></div>
+        <div class="empty" id="cartEmpty" style="display:none;">Koszyk pusty.</div>
+
+        <div class="summary">
+          <div class="sum-row">
+            <div class="label">Suma</div>
+            <div class="value" id="cartTotal">0,00 zł</div>
+          </div>
+          <button class="btn primary" id="checkoutBtn" disabled>Przejdź do checkout →</button>
+          <div class="footer-note">Checkout dodamy jako następny krok (email + imię + idempotency).</div>
+        </div>
+
+        <div class="errbox" id="cartErr"></div>
+      </div>
+    </aside>
   </div>
+</div>
 
-  <script>
-    // === konfiguracja ===
-    const API_BASE = "http://127.0.0.1:8000";
-    document.getElementById("apiBaseLabel").textContent = API_BASE;
+<div class="toast-wrap" id="toasts"></div>
 
-    // === helpers ===
-    const fmtPLN = (grosze) => (grosze / 100).toFixed(2).replace(".", ",") + " zł";
-    const byId = (id) => document.getElementById(id);
+<script>
+  // === konfiguracja ===
+  const API_BASE = "http://127.0.0.1:8000";
+  document.getElementById("apiBaseLabel").textContent = `Backend: ${API_BASE}`;
 
-    async function api(path, opts = {}) {
-      const res = await fetch(API_BASE + path, {
-        headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-        ...opts,
+  // === helpers ===
+  const fmtPLN = (grosze) => (grosze / 100).toFixed(2).replace(".", ",") + " zł";
+  const byId = (id) => document.getElementById(id);
+
+  function escapeHtml(str) {
+    return String(str ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function toast(type, title, msg) {
+    const wrap = byId("toasts");
+    const el = document.createElement("div");
+    el.className = `toast ${type}`;
+    el.innerHTML = `<div class="t-title">${escapeHtml(title)}</div><div>${escapeHtml(msg)}</div>`;
+    wrap.appendChild(el);
+    setTimeout(() => { el.style.opacity = "0"; el.style.transform = "translateY(6px)"; }, 2600);
+    setTimeout(() => el.remove(), 3200);
+  }
+
+  async function api(path, opts = {}) {
+    const res = await fetch(API_BASE + path, {
+      headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+      ...opts,
+    });
+
+    const isJson = (res.headers.get("content-type") || "").includes("application/json");
+    const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => "");
+
+    if (!res.ok) {
+      const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+      throw new Error(`${res.status} ${res.statusText}\n${msg}`);
+    }
+    return data;
+  }
+
+  // === koszyk w localStorage ===
+  const CART_KEY = "lanari_cart_id";
+
+  function getCartId() {
+    const v = localStorage.getItem(CART_KEY);
+    return v ? Number(v) : null;
+  }
+
+  function setCartId(id) {
+    if (id == null) localStorage.removeItem(CART_KEY);
+    else localStorage.setItem(CART_KEY, String(id));
+    byId("cartIdLabel").textContent = id ?? "-";
+  }
+
+  async function ensureCart() {
+    let cid = getCartId();
+    if (cid) return cid;
+    const cart = await api("/api/carts", { method: "POST" });
+    setCartId(cart.id);
+    toast("ok", "Koszyk utworzony", `cart_id = ${cart.id}`);
+    return cart.id;
+  }
+
+  // === state ===
+  let productsCache = [];
+  let cartCache = null;
+
+  // === render ===
+  function renderProducts(products) {
+    const q = (byId("search").value || "").trim().toLowerCase();
+    const filtered = q
+      ? products.filter(p => (p.name || "").toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q))
+      : products;
+
+    const el = byId("productsList");
+    el.innerHTML = "";
+
+    byId("productsEmpty").style.display = filtered.length ? "none" : "block";
+
+    for (const p of filtered) {
+      const card = document.createElement("div");
+      card.className = "product";
+
+      card.innerHTML = `
+        <div class="product-top">
+          <div>
+            <div class="product-name">${escapeHtml(p.name)}</div>
+            <div class="product-desc">${escapeHtml(p.description || "")}</div>
+          </div>
+          <div class="price-tag">${fmtPLN(p.price_pln)}</div>
+        </div>
+
+        <div class="product-actions">
+          <div class="qty-wrap">
+            <span>Ilość</span>
+            <input class="qty" type="number" min="1" value="1" />
+          </div>
+          <button class="btn primary">Dodaj</button>
+        </div>
+      `;
+
+      const qtyInput = card.querySelector("input.qty");
+      const btn = card.querySelector("button");
+
+      btn.addEventListener("click", async () => {
+        showErr("productsErr", "");
+        showErr("cartErr", "");
+        try {
+          const cid = await ensureCart();
+          const qty = Number(qtyInput.value || 1);
+          if (!Number.isFinite(qty) || qty <= 0) throw new Error("qty musi być > 0");
+
+          // To działa jak w sklepach, bo backend ma logikę:
+          // jeśli CartItem dla product_id istnieje -> qty += payload.qty
+          const cart = await api(`/api/carts/${cid}/items`, {
+            method: "POST",
+            body: JSON.stringify({ product_id: p.id, qty }),
+          });
+
+          cartCache = cart;
+          renderCart(cartCache);
+          toast("ok", "Dodano do koszyka", `${p.name} × ${qty}`);
+        } catch (e) {
+          showErr("cartErr", e.message);
+          toast("err", "Błąd", "Nie udało się dodać do koszyka");
+        }
       });
 
-      const isJson = (res.headers.get("content-type") || "").includes("application/json");
-      const data = isJson ? await res.json().catch(() => null) : await res.text().catch(() => "");
-
-      if (!res.ok) {
-        const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-        throw new Error(`${res.status} ${res.statusText}\n${msg}`);
-      }
-      return data;
+      el.appendChild(card);
     }
+  }
 
-    // === koszyk w localStorage ===
-    const CART_KEY = "lanari_cart_id";
+  function renderCart(cart) {
+    const el = byId("cartList");
+    el.innerHTML = "";
 
-    function getCartId() {
-      const v = localStorage.getItem(CART_KEY);
-      return v ? Number(v) : null;
+    const items = cart?.items || [];
+    byId("cartEmpty").style.display = items.length ? "none" : "block";
+
+    byId("cartTotal").textContent = fmtPLN(cart?.total_pln || 0);
+    byId("checkoutBtn").disabled = items.length === 0;
+
+    for (const it of items) {
+      const row = document.createElement("div");
+      row.className = "cart-item";
+
+      row.innerHTML = `
+        <div class="cart-top">
+          <div>
+            <div class="cart-name">${escapeHtml(it.name)}</div>
+            <div class="cart-meta">Cena: ${fmtPLN(it.unit_price_pln)} • qty: <b>${it.qty}</b></div>
+          </div>
+          <div class="line-total">${fmtPLN(it.line_total_pln)}</div>
+        </div>
+
+        <div class="cart-actions">
+          <div class="qty-wrap">
+            <span>Ustaw qty</span>
+            <input class="qty" type="number" min="0" value="${it.qty}" />
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn">Zapisz</button>
+            <button class="btn danger">Usuń</button>
+          </div>
+        </div>
+      `;
+
+      const qtyInput = row.querySelector("input.qty");
+      const [setBtn, delBtn] = row.querySelectorAll("button");
+
+      setBtn.addEventListener("click", async () => {
+        showErr("cartErr", "");
+        try {
+          const cid = getCartId();
+          const qty = Number(qtyInput.value);
+
+          if (!Number.isFinite(qty) || qty < 0) throw new Error("qty musi być >= 0");
+
+          // UX jak w sklepach: qty=0 usuwa pozycję
+          let updated;
+          if (qty === 0) {
+            await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
+            updated = await api(`/api/carts/${cid}`);
+            toast("warn", "Usunięto", `${it.name}`);
+          } else {
+            updated = await api(`/api/carts/${cid}/items/${it.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ qty }),
+            });
+            toast("ok", "Zaktualizowano", `${it.name} → qty ${qty}`);
+          }
+
+          cartCache = updated;
+          renderCart(cartCache);
+        } catch (e) {
+          showErr("cartErr", e.message);
+          toast("err", "Błąd", "Nie udało się zaktualizować pozycji");
+        }
+      });
+
+      delBtn.addEventListener("click", async () => {
+        showErr("cartErr", "");
+        try {
+          const cid = getCartId();
+          await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
+          const updated = await api(`/api/carts/${cid}`);
+          cartCache = updated;
+          renderCart(cartCache);
+          toast("warn", "Usunięto", `${it.name}`);
+        } catch (e) {
+          showErr("cartErr", e.message);
+          toast("err", "Błąd", "Nie udało się usunąć pozycji");
+        }
+      });
+
+      el.appendChild(row);
     }
+  }
 
-    function setCartId(id) {
-      localStorage.setItem(CART_KEY, String(id));
-      byId("cartIdLabel").textContent = id ?? "-";
+  function showErr(id, msg) {
+    const el = byId(id);
+    if (!msg) { el.style.display = "none"; el.textContent = ""; return; }
+    el.style.display = "block";
+    el.textContent = msg;
+  }
+
+  // === load ===
+  async function loadProducts() {
+    showErr("productsErr", "");
+    try {
+      const products = await api("/api/products");
+      productsCache = products;
+      renderProducts(productsCache);
+    } catch (e) {
+      showErr("productsErr", e.message);
     }
+  }
 
-    async function ensureCart() {
-      let cid = getCartId();
-      if (cid) return cid;
+  async function loadCart() {
+    showErr("cartErr", "");
+    const cid = getCartId();
+    byId("cartIdLabel").textContent = cid ?? "-";
+    if (!cid) {
+      cartCache = { items: [], total_pln: 0 };
+      renderCart(cartCache);
+      return;
+    }
+    try {
+      const cart = await api(`/api/carts/${cid}`);
+      cartCache = cart;
+      renderCart(cartCache);
+    } catch (e) {
+      showErr("cartErr", e.message);
+    }
+  }
 
+  // === UI events ===
+  byId("reloadBtn").addEventListener("click", async () => {
+    await loadProducts();
+    await loadCart();
+    toast("ok", "Odświeżono", "Dane pobrane z API");
+  });
+
+  byId("newCartBtn").addEventListener("click", async () => {
+    showErr("cartErr", "");
+    try {
       const cart = await api("/api/carts", { method: "POST" });
       setCartId(cart.id);
-      return cart.id;
+      cartCache = cart;
+      renderCart(cartCache);
+      toast("ok", "Nowy koszyk", `cart_id = ${cart.id}`);
+    } catch (e) {
+      showErr("cartErr", e.message);
+      toast("err", "Błąd", "Nie udało się utworzyć koszyka");
     }
+  });
 
-    // === render ===
-    function renderProducts(products) {
-      const el = byId("productsList");
-      el.innerHTML = "";
+  byId("clearCartIdBtn").addEventListener("click", async () => {
+    setCartId(null);
+    await loadCart();
+    toast("warn", "Wyzerowano", "Zapomniano cart_id");
+  });
 
-      for (const p of products) {
-        const card = document.createElement("div");
-        card.className = "product";
+  byId("search").addEventListener("input", () => {
+    renderProducts(productsCache);
+  });
 
-        card.innerHTML = `
-          <div class="product-top">
-            <div>
-              <div class="product-name">${escapeHtml(p.name)}</div>
-              <div class="muted">${escapeHtml(p.description || "")}</div>
-            </div>
-            <div class="price">${fmtPLN(p.price_pln)}</div>
-          </div>
-          <div class="actions">
-            <label class="muted">Ilość:</label>
-            <input class="qty" type="number" min="1" value="1" />
-            <button class="btn btn-primary">Dodaj do koszyka</button>
-          </div>
-        `;
+  byId("checkoutBtn").addEventListener("click", () => {
+    toast("warn", "Checkout", "Dodamy zaraz (email + imię + idempotency)");
+  });
 
-        const qtyInput = card.querySelector("input.qty");
-        const btn = card.querySelector("button");
-
-        btn.addEventListener("click", async () => {
-          byId("productsErr").textContent = "";
-          byId("cartErr").textContent = "";
-          try {
-            const cid = await ensureCart();
-            const qty = Number(qtyInput.value || 1);
-            if (!Number.isFinite(qty) || qty <= 0) throw new Error("qty musi być > 0");
-
-            await api(`/api/carts/${cid}/items`, {
-              method: "POST",
-              body: JSON.stringify({ product_id: p.id, qty }),
-            });
-
-            await loadCart();
-          } catch (e) {
-            byId("cartErr").textContent = e.message;
-          }
-        });
-
-        el.appendChild(card);
-      }
-    }
-
-    function renderCart(cart) {
-      byId("cartList").innerHTML = "";
-      byId("cartTotal").textContent = fmtPLN(cart.total_pln || 0);
-
-      if (!cart.items || cart.items.length === 0) {
-        byId("cartList").innerHTML = `<div class="muted">Koszyk pusty</div>`;
-        return;
-      }
-
-      for (const it of cart.items) {
-        const row = document.createElement("div");
-        row.className = "cart-item";
-
-        row.innerHTML = `
-          <div class="cart-top">
-            <div>
-              <div class="product-name">${escapeHtml(it.name)}</div>
-              <div class="muted">Cena: ${fmtPLN(it.unit_price_pln)} • Razem: <b>${fmtPLN(it.line_total_pln)}</b></div>
-            </div>
-          </div>
-          <div class="actions">
-            <label class="muted">Qty:</label>
-            <input class="qty" type="number" min="0" value="${it.qty}" />
-            <button class="btn">Ustaw</button>
-            <button class="btn">Usuń</button>
-          </div>
-        `;
-
-        const qtyInput = row.querySelector("input.qty");
-        const [setBtn, delBtn] = row.querySelectorAll("button");
-
-        setBtn.addEventListener("click", async () => {
-          byId("cartErr").textContent = "";
-          try {
-            const cid = getCartId();
-            const qty = Number(qtyInput.value);
-
-            // Uwaga: wg Twoich zasad PATCH ustawia konkretną ilość
-            // Możesz przyjąć: qty==0 => delete (wiele sklepów tak robi)
-            if (qty === 0) {
-              await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
-            } else {
-              await api(`/api/carts/${cid}/items/${it.id}`, {
-                method: "PATCH",
-                body: JSON.stringify({ qty }),
-              });
-            }
-
-            await loadCart();
-          } catch (e) {
-            byId("cartErr").textContent = e.message;
-          }
-        });
-
-        delBtn.addEventListener("click", async () => {
-          byId("cartErr").textContent = "";
-          try {
-            const cid = getCartId();
-            await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
-            await loadCart();
-          } catch (e) {
-            byId("cartErr").textContent = e.message;
-          }
-        });
-
-        byId("cartList").appendChild(row);
-      }
-    }
-
-    function escapeHtml(str) {
-      return String(str ?? "")
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    // === load ===
-    async function loadProducts() {
-      byId("productsErr").textContent = "";
-      try {
-        const products = await api("/api/products");
-        renderProducts(products);
-      } catch (e) {
-        byId("productsErr").textContent = e.message;
-      }
-    }
-
-    async function loadCart() {
-      byId("cartErr").textContent = "";
-      const cid = getCartId();
-      byId("cartIdLabel").textContent = cid ?? "-";
-      if (!cid) {
-        renderCart({ items: [], total_pln: 0 });
-        return;
-      }
-      try {
-        const cart = await api(`/api/carts/${cid}`);
-        renderCart(cart);
-      } catch (e) {
-        byId("cartErr").textContent = e.message;
-      }
-    }
-
-    // === UI events ===
-    byId("reloadBtn").addEventListener("click", async () => {
-      await loadProducts();
-      await loadCart();
-    });
-
-    byId("newCartBtn").addEventListener("click", async () => {
-      byId("cartErr").textContent = "";
-      try {
-        const cart = await api("/api/carts", { method: "POST" });
-        setCartId(cart.id);
-        await loadCart();
-      } catch (e) {
-        byId("cartErr").textContent = e.message;
-      }
-    });
-
-    // init
-    (async function init() {
-      setCartId(getCartId());
-      await loadProducts();
-      await loadCart();
-    })();
-  </script>
+  // init
+  (async function init() {
+    setCartId(getCartId());
+    await loadProducts();
+    await loadCart();
+  })();
+</script>
 </body>
 </html>
