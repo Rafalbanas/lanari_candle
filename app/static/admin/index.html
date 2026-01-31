@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <title>Lanari Admin</title>
+  <style>
+    body { font-family: sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
+    h1, h2 { border-bottom: 2px solid #ddd; padding-bottom: 10px; }
+    section { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    input, select, button { padding: 8px; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f0f0f0; }
+    .btn { cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+    .btn:hover { background: #0056b3; }
+    .btn-danger { background: #dc3545; }
+    .btn-danger:hover { background: #a71d2a; }
+    .status-NEW { color: blue; }
+    .status-PAID { color: green; font-weight: bold; }
+    .status-SHIPPED { color: purple; }
+    .status-CANCELED { color: red; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <h1>Lanari Admin Panel</h1>
+
+  <section id="authSection">
+    <h2>Logowanie</h2>
+    <input id="email" placeholder="Email admina">
+    <input id="password" type="password" placeholder="Hasło">
+    <button class="btn" onclick="login()">Zaloguj</button>
+  </section>
+
+  <div id="dashboard" style="display:none;">
+    <section>
+      <h2>Produkty</h2>
+      <div style="display:flex; gap:10px;">
+        <input id="newProdName" placeholder="Nazwa">
+        <input id="newProdPrice" placeholder="Cena (grosze)" type="number">
+        <button class="btn" onclick="createProduct()">Dodaj Produkt</button>
+      </div>
+      <button class="btn" onclick="loadProducts()">Odśwież listę</button>
+      <table id="productsTable">
+        <thead><tr><th>ID</th><th>Nazwa</th><th>Cena (PLN)</th><th>Aktywny</th><th>Akcje</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Zamówienia</h2>
+      <button class="btn" onclick="loadOrders()">Odśwież listę</button>
+      <table id="ordersTable">
+        <thead><tr><th>ID</th><th>Data</th><th>Klient</th><th>Total (PLN)</th><th>Status</th><th>Akcje</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </div>
+
+<script>
+const API = "/admin/api"; // Proxy w main.py lub bezpośrednio
+let token = localStorage.getItem("admin_token");
+
+if (token) showDashboard();
+
+async function api(path, method="GET", body=null) {
+  const opts = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`
+    }
+  };
+  if (body) opts.body = JSON.stringify(body);
+  
+  const res = await fetch(path, opts);
+  if (res.status === 401) {
+    alert("Sesja wygasła");
+    logout();
+    return null;
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({detail: res.statusText}));
+    alert("Błąd: " + JSON.stringify(err.detail));
+    return null;
+  }
+  return res.json();
+}
+
+async function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  
+  // Używamy publicznego endpointu auth
+  const res = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({email, password})
+  });
+  
+  if (res.ok) {
+    const data = await res.json();
+    token = data.access_token;
+    localStorage.setItem("admin_token", token);
+    showDashboard();
+  } else {
+    alert("Błąd logowania");
+  }
+}
+
+function logout() {
+  localStorage.removeItem("admin_token");
+  location.reload();
+}
+
+function showDashboard() {
+  document.getElementById("authSection").style.display = "none";
+  document.getElementById("dashboard").style.display = "block";
+  loadProducts();
+  loadOrders();
+}
+
+async function loadProducts() {
+  const products = await api(API + "/products");
+  if (!products) return;
+  
+  const tbody = document.querySelector("#productsTable tbody");
+  tbody.innerHTML = products.map(p => `
+    <tr>
+      <td>${p.id}</td>
+      <td>${p.name}</td>
+      <td>${(p.price_pln / 100).toFixed(2)}</td>
+      <td>${p.is_active ? "TAK" : "NIE"}</td>
+      <td>
+        <button class="btn btn-danger" onclick="deleteProduct(${p.id})">Usuń</button>
+        <!-- Tu można dodać edycję -->
+      </td>
+    </tr>
+  `).join("");
+}
+
+async function createProduct() {
+  const name = document.getElementById("newProdName").value;
+  const price = document.getElementById("newProdPrice").value;
+  if (!name || !price) return alert("Podaj nazwę i cenę");
+  
+  await api(API + "/products", "POST", {
+    name, 
+    price_pln: parseInt(price),
+    is_active: true
+  });
+  loadProducts();
+}
+
+async function deleteProduct(id) {
+  if(!confirm("Na pewno usunąć?")) return;
+  await api(API + `/products/${id}`, "DELETE");
+  loadProducts();
+}
+
+async function loadOrders() {
+  const orders = await api(API + "/orders");
+  if (!orders) return;
+  
+  const tbody = document.querySelector("#ordersTable tbody");
+  tbody.innerHTML = orders.map(o => `
+    <tr>
+      <td>${o.id}</td>
+      <td>${new Date(o.created_at).toLocaleString()}</td>
+      <td>${o.email}</td>
+      <td>${(o.total_pln / 100).toFixed(2)}</td>
+      <td class="status-${o.status}">${o.status}</td>
+      <td>
+        <button class="btn" onclick="alert('Szczegóły w JSON: ' + JSON.stringify(${JSON.stringify(o).replace(/"/g, '&quot;')}))">Info</button>
+      </td>
+    </tr>
+  `).join("");
+}
+</script>
+</body>
+</html>

@@ -530,22 +530,22 @@
   const CART_KEY = "lanari_cart_id";
 
   function getCartId() {
-    const v = localStorage.getItem(CART_KEY);
-    return v ? Number(v) : null;
+    const raw = localStorage.getItem(CART_KEY);
+    const id = Number(raw);
+    return Number.isFinite(id) && id > 0 ? id : null;
   }
 
   function setCartId(id) {
-    if (id == null) localStorage.removeItem(CART_KEY);
-    else localStorage.setItem(CART_KEY, String(id));
+    if (Number.isFinite(id) && id > 0) localStorage.setItem(CART_KEY, String(id));
+    else localStorage.removeItem(CART_KEY);
     byId("cartIdLabel").textContent = id ?? "-";
   }
 
   async function ensureCart() {
-    let cid = getCartId();
-    if (cid) return cid;
-    const cart = await api("/api/carts", { method: "POST" });
+    // Backend zarządza koszykiem przez cookie. Pobieramy go, aby upewnić się, że istnieje.
+    const cart = await api("/api/cart");
     setCartId(cart.id);
-    toast("ok", "Koszyk utworzony", `cart_id = ${cart.id}`);
+    // toast("ok", "Koszyk aktywny", `cart_id = ${cart.id}`);
     return cart.id;
   }
 
@@ -651,13 +651,13 @@
         showErr("productsErr", "");
         showErr("cartErr", "");
         try {
-          const cid = await ensureCart();
+          await ensureCart(); // Upewnij się, że mamy sesję/cookie
           const qty = Number(qtyInput.value || 1);
           if (!Number.isFinite(qty) || qty <= 0) throw new Error("qty musi być > 0");
 
           // To działa jak w sklepach, bo backend ma logikę:
           // jeśli CartItem dla product_id istnieje -> qty += payload.qty
-          const cart = await api(`/api/carts/${cid}/items`, {
+          const cart = await api(`/api/cart/items`, {
             method: "POST",
             body: JSON.stringify({ product_id: p.id, qty }),
           });
@@ -716,7 +716,6 @@
       setBtn.addEventListener("click", async () => {
         showErr("cartErr", "");
         try {
-          const cid = getCartId();
           const qty = Number(qtyInput.value);
 
           if (!Number.isFinite(qty) || qty < 0) throw new Error("qty musi być >= 0");
@@ -724,11 +723,11 @@
           // UX jak w sklepach: qty=0 usuwa pozycję
           let updated;
           if (qty === 0) {
-            await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
-            updated = await api(`/api/carts/${cid}`);
+            await api(`/api/cart/items/${it.id}`, { method: "DELETE" });
+            updated = await api(`/api/cart`);
             toast("warn", "Usunięto", `${it.name}`);
           } else {
-            updated = await api(`/api/carts/${cid}/items/${it.id}`, {
+            updated = await api(`/api/cart/items/${it.id}`, {
               method: "PATCH",
               body: JSON.stringify({ qty }),
             });
@@ -746,9 +745,8 @@
       delBtn.addEventListener("click", async () => {
         showErr("cartErr", "");
         try {
-          const cid = getCartId();
-          await api(`/api/carts/${cid}/items/${it.id}`, { method: "DELETE" });
-          const updated = await api(`/api/carts/${cid}`);
+          await api(`/api/cart/items/${it.id}`, { method: "DELETE" });
+          const updated = await api(`/api/cart`);
           cartCache = updated;
           renderCart(cartCache);
           toast("warn", "Usunięto", `${it.name}`);
@@ -783,15 +781,9 @@
 
   async function loadCart() {
     showErr("cartErr", "");
-    const cid = getCartId();
-    byId("cartIdLabel").textContent = cid ?? "-";
-    if (!cid) {
-      cartCache = { items: [], total_pln: 0 };
-      renderCart(cartCache);
-      return;
-    }
     try {
-      const cart = await api(`/api/carts/${cid}`);
+      const cart = await api(`/api/cart`);
+      setCartId(cart.id); // Aktualizuj ID w UI/localStorage
       cartCache = cart;
       renderCart(cartCache);
     } catch (e) {
@@ -922,11 +914,10 @@
   byId("newCartBtn").addEventListener("click", async () => {
     showErr("cartErr", "");
     try {
-      const cart = await api("/api/carts", { method: "POST" });
-      setCartId(cart.id);
-      cartCache = cart;
-      renderCart(cartCache);
-      toast("ok", "Nowy koszyk", `cart_id = ${cart.id}`);
+      // Wymuś nowy koszyk przez usunięcie cookie i ponowne pobranie
+      document.cookie = "cart_token=; Max-Age=0; path=/";
+      await loadCart();
+      toast("ok", "Nowy koszyk", "Utworzono nową sesję");
     } catch (e) {
       showErr("cartErr", e.message);
       toast("err", "Błąd", "Nie udało się utworzyć koszyka");
@@ -935,6 +926,7 @@
 
   byId("clearCartIdBtn").addEventListener("click", async () => {
     setCartId(null);
+    document.cookie = "cart_token=; Max-Age=0; path=/";
     await loadCart();
     toast("warn", "Wyzerowano", "Zapomniano cart_id");
   });
@@ -953,7 +945,7 @@
     const idempotencyKey = Math.random().toString(36).substring(2) + Date.now().toString(36);
 
     const cid = getCartId();
-    if (!cid) return;
+    // if (!cid) return; // Backend używa cookie, więc cid z localStorage jest opcjonalny
 
     const payload = {
       cart_id: cid,
@@ -970,7 +962,6 @@
 
       toast("ok", "Zamówienie złożone!", `ID: ${order.id} • Status: ${order.status}`);
       // Czyścimy lokalny koszyk
-      setCartId(null);
       await loadCart();
     } catch (e) {
       toast("err", "Błąd zamówienia", e.message);
@@ -1011,7 +1002,6 @@
 
   // init
   (async function init() {
-    setCartId(getCartId());
     await loadUser(); // check auth
     await loadProducts();
     await loadCart();
