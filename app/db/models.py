@@ -12,6 +12,11 @@ class OrderStatus(StrEnum):
     SHIPPED = "SHIPPED"
     CANCELED = "CANCELED"
 
+class PaymentStatus(StrEnum):
+    PENDING = "PENDING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+
 class UserDB(Base):
     __tablename__ = "users"
 
@@ -38,6 +43,7 @@ class CartDB(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     is_checked_out: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
 
     items: Mapped[list["CartItemDB"]] = relationship(
         back_populates="cart",
@@ -116,4 +122,16 @@ class MediaDB(Base):
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     caption: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+
+class PaymentAttemptDB(Base):
+    __tablename__ = "payment_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider: Mapped[str] = mapped_column(String(50), nullable=False, default="mock")
+    status: Mapped[str] = mapped_column(String(32), default=PaymentStatus.PENDING, nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)

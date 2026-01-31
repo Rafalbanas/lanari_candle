@@ -529,16 +529,6 @@
   // === koszyk w localStorage ===
   const CART_KEY = "lanari_cart_id";
 
-    if (!res.ok) {
-      const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-      throw new Error(`${res.status} ${res.statusText}\n${msg}`);
-    }
-    return data;
-  }
-
-  // === koszyk w localStorage ===
-  const CART_KEY = "lanari_cart_id";
-
   function getCartId() {
     const v = localStorage.getItem(CART_KEY);
     return v ? Number(v) : null;

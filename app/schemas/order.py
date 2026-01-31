@@ -9,7 +9,7 @@ class OrderCreate(BaseModel):
 
 
 class CheckoutRequest(BaseModel):
-    cart_id: int
+    cart_id: int | None = None  # Opcjonalne, bo bierzemy z cookie
     email: EmailStr
     full_name: str = Field(min_length=2, max_length=255)
 

@@ -1,58 +1,50 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import select, delete
 
 from app.db.deps import get_db
 from app.api.deps import get_current_user
-from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus, UserDB
+from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus, UserDB, PaymentAttemptDB, PaymentStatus
 from app.schemas.order import OrderCreate, OrderOut, OrderItemOut, CheckoutRequest
+from app.db.cart_service import get_or_create_cart
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 checkout_router = APIRouter(prefix="/checkout", tags=["checkout"])
 
 
-def _load_cart_or_404(db: Session, cart_id: int) -> CartDB:
-    stmt = (
-        select(CartDB)
-        .where(CartDB.id == cart_id)
-        .options(
-            selectinload(CartDB.items).joinedload(CartItemDB.product)
-        )
-    )
-    cart = db.execute(stmt).scalar_one_or_none()
-    if not cart:
-        raise HTTPException(status_code=404, detail="Cart not found")
-    return cart
-
-
 @checkout_router.post("", response_model=OrderOut, status_code=201)
 def checkout(
+    request: Request,
+    response: Response,
     payload: CheckoutRequest,
     db: Session = Depends(get_db),
     current_user: UserDB = Depends(get_current_user),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ):
-    # 1. Idempotency check
+    # 1. Idempotency check (sprawdzamy czy już jest płatność/zamówienie z tym kluczem)
     if idempotency_key:
-        existing_by_key = db.execute(
-            select(OrderDB)
-            .where(OrderDB.idempotency_key == idempotency_key)
-            .options(selectinload(OrderDB.items))
+        existing_payment = db.execute(
+            select(PaymentAttemptDB)
+            .where(PaymentAttemptDB.idempotency_key == idempotency_key)
         ).scalar_one_or_none()
-        if existing_by_key:
-            return _order_out(existing_by_key)
+        
+        if existing_payment:
+            existing_order = db.get(OrderDB, existing_payment.order_id)
+            if existing_order:
+                return _order_out(existing_order)
 
     # 2. Check if cart already has an order (double-click prevention)
+    # (Tutaj musimy najpierw pobrać koszyk, żeby znać jego ID)
+    cart = get_or_create_cart(db, request, response)
+    
     existing_for_cart = db.execute(
         select(OrderDB)
-        .where(OrderDB.cart_id == payload.cart_id)
+        .where(OrderDB.cart_id == cart.id)
         .options(selectinload(OrderDB.items))
     ).scalar_one_or_none()
     if existing_for_cart:
         return _order_out(existing_for_cart)
 
-    # 3. Load cart
-    cart = _load_cart_or_404(db, payload.cart_id)
     if not cart.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
@@ -85,7 +77,7 @@ def checkout(
             full_name=current_user.full_name or payload.full_name,  # Preferujemy imię z konta
             total_pln=total_pln,
             status=OrderStatus.NEW,
-            idempotency_key=idempotency_key,
+            idempotency_key=idempotency_key, # Zostawiamy w OrderDB dla spójności, ale główna kontrola w PaymentAttempt
             items=order_items_db
         )
         db.add(order)
@@ -93,6 +85,16 @@ def checkout(
         # Mark cart as checked out
         cart.is_checked_out = True
         db.add(cart)
+
+        # Create Payment Attempt if idempotency key provided (or generate one)
+        if idempotency_key:
+            payment = PaymentAttemptDB(
+                order_id=order.id, # Będzie dostępne po flush, ale SQLAlchemy ogarnie to w sesji
+                provider="mock",
+                status=PaymentStatus.PENDING,
+                idempotency_key=idempotency_key
+            )
+            db.add(payment)
 
         # Clear cart items
         db.execute(delete(CartItemDB).where(CartItemDB.cart_id == cart.id))
@@ -108,13 +110,15 @@ def checkout(
 
 @router.post("", response_model=OrderOut, status_code=201)
 def create_order(
+    request: Request,
+    response: Response,
     payload: OrderCreate,
     db: Session = Depends(get_db),
     current_user: UserDB = Depends(get_current_user)
 ):
     # Legacy wrapper using the new logic
     req = CheckoutRequest(cart_id=payload.cart_id, email=payload.email, full_name=payload.full_name)
-    return checkout(req, db=db, current_user=current_user, idempotency_key=None)
+    return checkout(request, response, req, db=db, current_user=current_user, idempotency_key=None)
 
 
 @router.get("", response_model=list[OrderOut])

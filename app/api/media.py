@@ -1,40 +1,33 @@
 import shutil
 import os
 from uuid import uuid4
-from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import select, desc
+from sqlalchemy import select
 
-from app.api.deps import get_current_user
 from app.db.deps import get_db
 from app.db.models import MediaDB
 from app.schemas.media import MediaOut
-from app.db.models import UserDB
 from app.core.config import settings
 
 router = APIRouter(prefix="/media", tags=["media"])
 
 UPLOAD_DIR = "app/static/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 
-
-def _safe_ext(filename: str) -> str:
-    ext = filename.split(".")[-1].lower() if "." in filename else ""
-    return f".{ext}" if ext else ""
 
 @router.post("", response_model=MediaOut, status_code=201)
 def upload_media(
     file: UploadFile = File(...),
     caption: str | None = Form(None),
-    db: Session = Depends(get_db),
-    current_user: UserDB = Depends(get_current_user)
+    db: Session = Depends(get_db)
 ):
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="Missing filename")
+    # Walidacja typu pliku (prosta)
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
 
     # Generowanie unikalnej nazwy
-    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    ext = file.filename.split(".")[-1] if file.filename and "." in file.filename else "jpg"
     filename = f"{uuid4()}.{ext}"
     file_path = os.path.join(UPLOAD_DIR, filename)
 
@@ -50,12 +43,7 @@ def upload_media(
     # albo zwrócimy relatywny URL. Tutaj przyjmijmy konwencję:
     url = f"/static/uploads/{filename}"
 
-    media = MediaDB(
-        owner_id=current_user.id,
-        filename=filename,
-        url=url,
-        caption=caption
-    )
+    media = MediaDB(filename=filename, url=url, caption=caption)
     db.add(media)
     db.commit()
     db.refresh(media)
@@ -65,5 +53,5 @@ def upload_media(
 
 @router.get("", response_model=list[MediaOut])
 def list_media(db: Session = Depends(get_db)):
-    stmt = select(MediaDB).order_by(desc(MediaDB.created_at))
+    stmt = select(MediaDB).order_by(MediaDB.created_at.desc())
     return db.execute(stmt).scalars().all()
