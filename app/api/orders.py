@@ -35,7 +35,12 @@ def checkout(
 
     # 2. Check if cart already has an order (double-click prevention)
     # (Tutaj musimy najpierw pobrać koszyk, żeby znać jego ID)
-    cart = get_or_create_cart(db, request, response)
+    if payload.cart_id:
+        cart = db.get(CartDB, payload.cart_id)
+        if not cart:
+            raise HTTPException(status_code=404, detail="Cart not found")
+    else:
+        cart = get_or_create_cart(db, request, response)
     
     existing_for_cart = db.execute(
         select(OrderDB)
@@ -49,12 +54,12 @@ def checkout(
         raise HTTPException(status_code=400, detail="Cart is empty")
 
     # 4. Prepare order items (snapshot)
-    total_pln = 0
+    total_grosze = 0
     order_items_db = []
 
     for it in cart.items:
         line_total = it.qty * it.unit_price_pln
-        total_pln += line_total
+        total_grosze += line_total
         
         # Snapshot name from product
         product_name = it.product.name if it.product else f"Product {it.product_id}"
@@ -75,7 +80,7 @@ def checkout(
             cart_id=cart.id,
             email=current_user.email,  # Używamy emaila z tokena (bezpieczniej)
             full_name=current_user.full_name or payload.full_name,  # Preferujemy imię z konta
-            total_pln=total_pln,
+            total_pln=total_grosze, # DB stores integers (grosze), despite the column name
             status=OrderStatus.NEW,
             idempotency_key=idempotency_key, # Zostawiamy w OrderDB dla spójności, ale główna kontrola w PaymentAttempt
             items=order_items_db

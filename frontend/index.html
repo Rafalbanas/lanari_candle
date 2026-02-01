@@ -360,6 +360,27 @@
       header, .container{ padding-left: 14px; padding-right: 14px; }
       h1{ font-size: 28px; }
     }
+
+    /* Modal Success */
+    .modal-overlay {
+      position: fixed; inset:0; background: rgba(0,0,0,.7); backdrop-filter: blur(4px);
+      display:none; align-items:center; justify-content:center; z-index:100;
+    }
+    .modal {
+      background: #111; border: 1px solid var(--border); border-radius: var(--radius);
+      width: min(400px, 90vw); box-shadow: var(--shadow-hover);
+      overflow:hidden; animation: popIn .2s ease;
+    }
+    @keyframes popIn { from{transform:scale(.95); opacity:0;} to{transform:scale(1); opacity:1;} }
+    .modal-header {
+      padding: 16px; border-bottom: 1px solid var(--border);
+      display:flex; justify-content:space-between; align-items:center;
+    }
+    .modal-header h3 { margin:0; font-size:18px; }
+    .modal-content { padding: 20px; font-size: 14px; line-height: 1.6; color: var(--muted); }
+    .modal-footer { padding: 16px; border-top: 1px solid var(--border); text-align:right; }
+    .modal-row { display:flex; justify-content:space-between; margin-bottom:8px; }
+    .modal-row strong { color: var(--text); }
   </style>
 </head>
 
@@ -470,6 +491,20 @@
         <div class="errbox" id="cartErr"></div>
       </div>
     </aside>
+  </div>
+</div>
+
+<!-- ORDER SUCCESS MODAL -->
+<div id="orderModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Zamówienie przyjęte!</h3>
+      <button class="btn ghost" onclick="closeOrderModal()" style="padding:4px 10px;">✕</button>
+    </div>
+    <div class="modal-content" id="orderModalContent"></div>
+    <div class="modal-footer">
+      <button class="btn primary" onclick="closeOrderModal()">OK, super</button>
+    </div>
   </div>
 </div>
 
@@ -904,6 +939,24 @@
     }
   });
 
+  // === MODAL LOGIC ===
+  function showOrderModal(order) {
+    const el = byId("orderModal");
+    const content = byId("orderModalContent");
+    
+    // Tutaj formatujemy grosze na PLN używając fmtPLN
+    content.innerHTML = `
+      <div class="modal-row"><span>Numer zamówienia:</span> <strong>#${order.id}</strong></div>
+      <div class="modal-row"><span>Status:</span> <strong>${order.status}</strong></div>
+      <div class="modal-row"><span>Dla:</span> <strong>${escapeHtml(order.full_name)}</strong></div>
+      <div class="modal-row"><span>Email:</span> <strong>${escapeHtml(order.email)}</strong></div>
+      <hr style="border:0; border-top:1px solid var(--border); margin:12px 0;">
+      <div class="modal-row" style="font-size:16px;"><span>Suma:</span> <strong style="color:var(--accent2)">${fmtPLN(order.total_pln)}</strong></div>
+    `;
+    el.style.display = "flex";
+  }
+  window.closeOrderModal = () => { byId("orderModal").style.display = "none"; };
+
   // === UI events ===
   byId("reloadBtn").addEventListener("click", async () => {
     await loadProducts();
@@ -944,23 +997,26 @@
     // Generujemy prosty klucz idempotencyjności
     const idempotencyKey = Math.random().toString(36).substring(2) + Date.now().toString(36);
 
-    const cid = getCartId();
-    // if (!cid) return; // Backend używa cookie, więc cid z localStorage jest opcjonalny
+    // Fix: Zawsze wysyłamy cart_id, aby backend wiedział, który koszyk realizujemy.
+    const cartId = cartCache?.id || getCartId();
+    if (!cartId) {
+      return toast("err", "Błąd", "Brak ID koszyka. Odśwież stronę.");
+    }
 
     const payload = {
-      cart_id: cid,
+      cart_id: cartId,
       email: currentUser.email,
       full_name: currentUser.full_name || currentUser.email.split("@")[0]
     };
 
     try {
-      const order = await api("/api/checkout", {
+      const order = await api("/api/orders", {
         method: "POST",
         body: JSON.stringify(payload),
         headers: { "Idempotency-Key": idempotencyKey }
       });
 
-      toast("ok", "Zamówienie złożone!", `ID: ${order.id} • Status: ${order.status}`);
+      showOrderModal(order);
       // Czyścimy lokalny koszyk
       await loadCart();
     } catch (e) {
