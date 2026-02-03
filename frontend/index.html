@@ -420,12 +420,7 @@
           <h2>Galeria</h2>
           <div class="sub">Inspiracje i nowości.</div>
         </div>
-        <form id="uploadForm" style="display:flex; gap:8px;">
-          <input type="file" id="uploadFile" accept="image/*" style="display:none" />
-          <button type="button" class="btn" onclick="document.getElementById('uploadFile').click()">+ Dodaj zdjęcie</button>
-          <input type="text" id="uploadCaption" class="search" placeholder="Opis (opcjonalnie)" style="width:160px; display:none;" />
-          <button type="submit" class="btn primary" id="uploadSubmitBtn" style="display:none;">Wyślij</button>
-        </form>
+        <!-- Upload przeniesiony do panelu admina -->
       </div>
       <div class="content">
         <div class="feed-grid" id="feedGrid"></div>
@@ -667,6 +662,7 @@
         <div class="product-top">
           <div>
             <div class="product-name">${escapeHtml(p.name)}</div>
+            ${p.image_url ? `<img src="${p.image_url.startsWith('http') ? p.image_url : (STATIC_BASE + p.image_url)}" alt="" style="margin-top:6px; width:100%; max-width:220px; border-radius:10px; border:1px solid rgba(255,255,255,.08); object-fit:cover;">` : ''}
             <div class="product-desc">${escapeHtml(p.description || "")}</div>
           </div>
           <div class="price-tag">${fmtPLN(p.price_pln)}</div>
@@ -894,53 +890,7 @@
     }
   }
 
-  // Upload logic
-  const fileInput = byId("uploadFile");
-  const captionInput = byId("uploadCaption");
-  const uploadBtn = byId("uploadSubmitBtn");
-
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files.length) {
-      captionInput.style.display = "block";
-      uploadBtn.style.display = "inline-flex";
-      captionInput.focus();
-    }
-  });
-
-  byId("uploadForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const file = fileInput.files[0];
-    if (!file) return;
-
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("caption", captionInput.value);
-
-    try {
-      // Używamy fetch bezpośrednio dla FormData (api() wrapper ustawia Content-Type: json, co psuje multipart)
-      const token = localStorage.getItem(TOKEN_KEY);
-      const headers = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-
-      const res = await fetch(`${API_BASE}/api/media`, {
-        method: "POST",
-        body: fd,
-        headers,
-        credentials: "include",
-      });
-      
-      if (!res.ok) throw new Error("Upload failed");
-      
-      toast("ok", "Sukces", "Zdjęcie dodane");
-      fileInput.value = "";
-      captionInput.value = "";
-      captionInput.style.display = "none";
-      uploadBtn.style.display = "none";
-      await loadFeed();
-    } catch (e) {
-      toast("err", "Błąd", e.message);
-    }
-  });
+  // Upload przeniesiony do panelu admina – frontend tylko wyświetla feed
 
   // === MODAL LOGIC ===
   function showOrderModal(order) {

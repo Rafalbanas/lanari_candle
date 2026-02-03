@@ -10,6 +10,7 @@ from app.core.security import JWT_ALG
 from app.db.models import UserDB
 
 bearer = HTTPBearer(auto_error=True)
+bearer_optional = HTTPBearer(auto_error=False)
 
 def get_current_user(
     creds: HTTPAuthorizationCredentials = Depends(bearer),
@@ -34,3 +35,13 @@ def require_admin(current_user: UserDB = Depends(get_current_user)) -> UserDB:
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return current_user
+
+
+def get_current_user_optional(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_optional),
+    db: Session = Depends(get_db),
+) -> UserDB | None:
+    # If no Authorization header, return None gracefully
+    if creds is None:
+        return None
+    return get_current_user(creds, db)

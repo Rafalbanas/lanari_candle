@@ -37,6 +37,7 @@ class ProductDB(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     price_pln: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     
 
 class CartDB(Base):
@@ -120,7 +121,7 @@ class MediaDB(Base):
     __tablename__ = "media"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    owner_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    owner_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     caption: Mapped[str | None] = mapped_column(String(500), nullable=True)

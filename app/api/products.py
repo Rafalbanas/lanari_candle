@@ -23,6 +23,7 @@ def list_products(active_only: bool = True, db: Session = Depends(get_db)):
             description=r.description,
             price_pln=r.price_pln,
             is_active=r.is_active,
+            image_url=r.image_url,
         )
         for r in rows
     ]
@@ -39,6 +40,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         description=row.description,
         price_pln=row.price_pln,
         is_active=row.is_active,
+        image_url=row.image_url,
     )
 
 
@@ -69,6 +71,7 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
         description=row.description,
         price_pln=row.price_pln,
         is_active=row.is_active,
+        image_url=row.image_url,
     )
 
 
@@ -91,6 +94,7 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
         description=payload.description,
         price_pln=payload.price_pln,
         is_active=payload.is_active,
+        image_url=payload.image_url,
     )
     db.add(row)
     db.commit()

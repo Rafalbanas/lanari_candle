@@ -54,11 +54,24 @@
         <tbody></tbody>
       </table>
     </section>
+
+    <section>
+      <h2>Galeria (upload)</h2>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <input type="file" id="galleryFile" accept="image/*">
+        <input id="galleryCaption" placeholder="Podpis (opcjonalnie)">
+        <button class="btn" onclick="uploadMedia()">Wyślij</button>
+        <button class="btn" onclick="loadGallery()">Odśwież listę</button>
+      </div>
+      <div id="galleryStatus" style="color:#555; margin-top:6px;"></div>
+      <div id="galleryGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:10px; margin-top:12px;"></div>
+    </section>
   </div>
 
 <script>
 const API = "/admin/api"; // Proxy w main.py lub bezpośrednio
 let token = localStorage.getItem("admin_token");
+const STATIC_BASE = ""; // ten sam host
 
 if (token) showDashboard();
 
@@ -127,12 +140,15 @@ async function loadProducts() {
   tbody.innerHTML = products.map(p => `
     <tr>
       <td>${p.id}</td>
-      <td>${p.name}</td>
+      <td>${p.name}<br>${p.image_url ? `<img src="${p.image_url.startsWith('http') ? p.image_url : (STATIC_BASE + p.image_url)}" style="max-width:70px;max-height:70px;object-fit:cover;border:1px solid #ddd;border-radius:4px;margin-top:4px;">` : ''}</td>
       <td>${(p.price_pln / 100).toFixed(2)}</td>
       <td>${p.is_active ? "TAK" : "NIE"}</td>
       <td>
         <button class="btn btn-danger" onclick="deleteProduct(${p.id})">Usuń</button>
-        <!-- Tu można dodać edycję -->
+        <div style="margin-top:6px;">
+          <input type="file" id="img-${p.id}" accept="image/*" style="display:none" onchange="uploadProductImage(${p.id})">
+          <button class="btn" onclick="document.getElementById('img-${p.id}').click()">Miniatura</button>
+        </div>
       </td>
     </tr>
   `).join("");
@@ -148,6 +164,33 @@ async function createProduct() {
     price_pln: parseInt(price),
     is_active: true
   });
+  loadProducts();
+}
+
+async function uploadProductImage(id) {
+  const input = document.getElementById(`img-${id}`);
+  if (!input || !input.files.length) return;
+  const file = input.files[0];
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("caption", `thumb:${id}`);
+
+  // Najpierw upload do /api/media
+  const uploadRes = await fetch("/api/media", {
+    method: "POST",
+    body: fd,
+    headers: token ? { "Authorization": `Bearer ${token}` } : {},
+    credentials: "include",
+  });
+  if (!uploadRes.ok) {
+    alert("Upload nieudany");
+    return;
+  }
+  const media = await uploadRes.json();
+  const url = media.url;
+
+  // Patch produktu z image_url
+  await api(API + `/products/${id}`, "PATCH", { image_url: url });
   loadProducts();
 }
 
@@ -197,6 +240,94 @@ async function updateOrderStatus(id) {
   if (res) {
     alert("Status zaktualizowany");
     loadOrders();
+  }
+}
+
+// === GALERIA ===
+async function loadGallery() {
+  const statusEl = document.getElementById("galleryStatus");
+  statusEl.textContent = "Ładowanie...";
+  try {
+    const res = await fetch("/api/media", { headers: token ? { "Authorization": `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error("Błąd pobierania");
+    const items = await res.json();
+    renderGallery(items);
+    statusEl.textContent = `Załadowano ${items.length} zdjęć.`;
+  } catch (e) {
+    statusEl.textContent = e.message;
+  }
+}
+
+function renderGallery(items) {
+  const grid = document.getElementById("galleryGrid");
+  if (!items || !items.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1; color:#666;">Brak zdjęć.</div>';
+    return;
+  }
+  grid.innerHTML = items.map(it => {
+    const src = it.url.startsWith("http") ? it.url : (STATIC_BASE + it.url);
+    return `<div style="border:1px solid #ddd; border-radius:6px; overflow:hidden; background:#fff; position:relative;">
+      <button onclick="deleteMedia(${it.id})" style="position:absolute; top:6px; right:6px; border:none; background:#dc3545; color:#fff; padding:4px 6px; border-radius:4px; cursor:pointer;">×</button>
+      <img src="${src}" alt="${it.caption || ""}" style="width:100%; display:block; aspect-ratio:1/1; object-fit:cover;">
+      <div style="padding:6px; font-size:12px; color:#444;">${it.caption || "(bez opisu)"}<br><span style="color:#888;">${new Date(it.created_at).toLocaleString()}</span></div>
+    </div>`;
+  }).join("");
+}
+
+async function uploadMedia() {
+  const fileInput = document.getElementById("galleryFile");
+  const captionInput = document.getElementById("galleryCaption");
+  const statusEl = document.getElementById("galleryStatus");
+
+  const file = fileInput.files[0];
+  if (!file) {
+    statusEl.textContent = "Wybierz plik.";
+    return;
+  }
+
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("caption", captionInput.value);
+
+  statusEl.textContent = "Wysyłanie...";
+  try {
+    const res = await fetch("/api/media", {
+      method: "POST",
+      body: fd,
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => res.statusText);
+      throw new Error(`Upload failed (${res.status}): ${msg}`);
+    }
+    statusEl.textContent = "Dodano.";
+    fileInput.value = "";
+    captionInput.value = "";
+    await loadGallery();
+  } catch (e) {
+    statusEl.textContent = e.message;
+    console.error("upload error", e);
+  }
+}
+
+async function deleteMedia(id) {
+  if (!confirm("Usunąć to zdjęcie?")) return;
+  const statusEl = document.getElementById("galleryStatus");
+  statusEl.textContent = "Usuwanie...";
+  try {
+    const res = await fetch(`/api/media/${id}`, {
+      method: "DELETE",
+      headers: token ? { "Authorization": `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => res.statusText);
+      throw new Error(msg || "Błąd usuwania");
+    }
+    statusEl.textContent = "Usunięto.";
+    await loadGallery();
+  } catch (e) {
+    statusEl.textContent = e.message;
   }
 }
 </script>

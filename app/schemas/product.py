@@ -7,6 +7,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = Field(default=None, max_length=2000)
     price_pln: int = Field(ge=1, le=1_000_000, description="Price in grosze (PLN * 100)")
     is_active: bool = True
+    image_url: Optional[str] = Field(default=None, max_length=512)
 
 
 class ProductCreate(ProductBase):
@@ -22,3 +23,4 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = Field(default=None, max_length=2000)
     price_pln: Optional[int] = Field(default=None, ge=1, le=1_000_000)
     is_active: Optional[bool] = None
+    image_url: Optional[str] = Field(default=None, max_length=512)
