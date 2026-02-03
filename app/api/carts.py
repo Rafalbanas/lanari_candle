@@ -23,6 +23,8 @@ def add_item(payload: CartItemAdd, request: Request, response: Response, db: Ses
     product = db.get(ProductDB, payload.product_id)
     if not product or not product.is_active:
         raise HTTPException(status_code=404, detail="Product not found")
+    if product.stock_qty < payload.qty:
+        raise HTTPException(status_code=400, detail="Not enough stock")
 
     # jeśli produkt już jest w koszyku -> zwiększ qty
     stmt = select(CartItemDB).where(
@@ -32,6 +34,8 @@ def add_item(payload: CartItemAdd, request: Request, response: Response, db: Ses
     item = db.execute(stmt).scalars().first()
 
     if item:
+        if item.qty + payload.qty > product.stock_qty:
+            raise HTTPException(status_code=400, detail="Not enough stock")
         item.qty += payload.qty
     else:
         item = CartItemDB(
@@ -68,6 +72,12 @@ def update_item(item_id: int, payload: CartItemUpdate, request: Request, respons
         db.delete(item)
         db.commit()
         return _cart_out(cart, db)
+
+    product = db.get(ProductDB, item.product_id)
+    if not product or not product.is_active:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if payload.qty > product.stock_qty:
+        raise HTTPException(status_code=400, detail="Not enough stock")
 
     item.qty = payload.qty
     db.add(item)

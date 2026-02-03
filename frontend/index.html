@@ -659,14 +659,15 @@
       card.className = "product";
 
       card.innerHTML = `
-        <div class="product-top">
-          <div>
-            <div class="product-name">${escapeHtml(p.name)}</div>
-            ${p.image_url ? `<img src="${p.image_url.startsWith('http') ? p.image_url : (STATIC_BASE + p.image_url)}" alt="" style="margin-top:6px; width:100%; max-width:220px; border-radius:10px; border:1px solid rgba(255,255,255,.08); object-fit:cover;">` : ''}
-            <div class="product-desc">${escapeHtml(p.description || "")}</div>
-          </div>
-          <div class="price-tag">${fmtPLN(p.price_pln)}</div>
+      <div class="product-top">
+        <div>
+          <div class="product-name">${escapeHtml(p.name)}</div>
+          ${p.image_url ? `<img src="${p.image_url.startsWith('http') ? p.image_url : (STATIC_BASE + p.image_url)}" alt="" style="margin-top:6px; width:100%; max-width:220px; border-radius:10px; border:1px solid rgba(255,255,255,.08); object-fit:cover;">` : ''}
+          <div class="product-desc">${escapeHtml(p.description || "")}</div>
+          <div class="product-stock" style="color:var(--muted); font-size:12px; margin-top:4px;">Dostępne: ${p.stock_qty ?? 0} szt.</div>
         </div>
+        <div class="price-tag">${fmtPLN(p.price_pln)}</div>
+      </div>
 
         <div class="product-actions">
           <div class="qty-wrap">
@@ -687,6 +688,7 @@
           await ensureCart(); // Upewnij się, że mamy sesję/cookie
           const qty = Number(qtyInput.value || 1);
           if (!Number.isFinite(qty) || qty <= 0) throw new Error("qty musi być > 0");
+          if (p.stock_qty !== undefined && qty > p.stock_qty) throw new Error("Brak wystarczającego stanu");
 
           // To działa jak w sklepach, bo backend ma logikę:
           // jeśli CartItem dla product_id istnieje -> qty += payload.qty
@@ -700,7 +702,11 @@
           toast("ok", "Dodano do koszyka", `${p.name} × ${qty}`);
         } catch (e) {
           showErr("cartErr", e.message);
-          toast("err", "Błąd", "Nie udało się dodać do koszyka");
+          toast("err", "Błąd", e.message || "Nie udało się dodać do koszyka");
+          if ((e.message || "").toLowerCase().includes("stock")) {
+            // zsynchronizuj stan, gdy backend odrzucił przez brak stanu
+            await loadProducts();
+          }
         }
       });
 
@@ -972,8 +978,13 @@
       showOrderModal(order);
       // Czyścimy lokalny koszyk
       await loadCart();
+      // Po zakupie odświeżamy produkty, żeby zaciągnąć nowy stan magazynu
+      await loadProducts();
     } catch (e) {
       toast("err", "Błąd zamówienia", e.message);
+      if ((e.message || "").toLowerCase().includes("stock")) {
+        await loadProducts();
+      }
     }
   });
 

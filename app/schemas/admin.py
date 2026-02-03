@@ -11,6 +11,7 @@ class ProductCreate(BaseModel):
     price_pln: int
     is_active: bool = True
     image_url: Optional[str] = Field(default=None, max_length=512)
+    stock_qty: int = Field(default=0, ge=0)
 
 
 class ProductUpdate(BaseModel):
@@ -19,6 +20,7 @@ class ProductUpdate(BaseModel):
     price_pln: Optional[int] = None
     is_active: Optional[bool] = None
     image_url: Optional[str] = Field(default=None, max_length=512)
+    stock_qty: Optional[int] = Field(default=None, ge=0)
 
 
 class OrderStatusUpdate(BaseModel):

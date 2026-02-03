@@ -38,6 +38,7 @@ class ProductDB(Base):
     price_pln: Mapped[int] = mapped_column(Integer, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    stock_qty: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     
 
 class CartDB(Base):

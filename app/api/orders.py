@@ -4,7 +4,7 @@ from sqlalchemy import select, delete
 
 from app.db.deps import get_db
 from app.api.deps import get_current_user
-from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus, UserDB, PaymentAttemptDB, PaymentStatus
+from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus, UserDB, PaymentAttemptDB, PaymentStatus, ProductDB
 from app.schemas.order import OrderCreate, OrderOut, OrderItemOut, CheckoutRequest
 from app.db.cart_service import get_or_create_cart
 
@@ -57,12 +57,22 @@ def checkout(
     total_grosze = 0
     order_items_db = []
 
+    # Stock validation and collection of touched products for decrement
+    touched_products = []
+
     for it in cart.items:
+        # refresh product from DB to ensure current stock
+        product = db.get(ProductDB, it.product_id)
+        if not product or not product.is_active:
+            raise HTTPException(status_code=400, detail=f"Product {it.product_id} unavailable")
+        if it.qty > product.stock_qty:
+            raise HTTPException(status_code=400, detail=f"Not enough stock for {product.name}")
+
         line_total = it.qty * it.unit_price_pln
         total_grosze += line_total
         
         # Snapshot name from product
-        product_name = it.product.name if it.product else f"Product {it.product_id}"
+        product_name = product.name
         
         order_items_db.append(
             OrderItemDB(
@@ -73,6 +83,7 @@ def checkout(
                 line_total_pln=line_total
             )
         )
+        touched_products.append((product, it.qty))
 
     # 5. Transaction: Create Order + Clear Cart
     try:
@@ -100,6 +111,13 @@ def checkout(
                 idempotency_key=idempotency_key
             )
             db.add(payment)
+
+        # Decrement stock
+        for product, qty in touched_products:
+            product.stock_qty -= qty
+            if product.stock_qty < 0:
+                raise HTTPException(status_code=400, detail=f"Oversell detected for {product.name}")
+            db.add(product)
 
         # Clear cart items
         db.execute(delete(CartItemDB).where(CartItemDB.cart_id == cart.id))

@@ -24,6 +24,7 @@ def list_products(active_only: bool = True, db: Session = Depends(get_db)):
             price_pln=r.price_pln,
             is_active=r.is_active,
             image_url=r.image_url,
+            stock_qty=r.stock_qty,
         )
         for r in rows
     ]
@@ -41,6 +42,7 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
         price_pln=row.price_pln,
         is_active=row.is_active,
         image_url=row.image_url,
+        stock_qty=row.stock_qty,
     )
 
 
@@ -57,6 +59,8 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
         raise HTTPException(status_code=422, detail="Name cannot be empty")
     if "price_pln" in data and data["price_pln"] is not None and data["price_pln"] < 1:
         raise HTTPException(status_code=422, detail="price_pln must be >= 1")
+    if "stock_qty" in data and data["stock_qty"] is not None and data["stock_qty"] < 0:
+        raise HTTPException(status_code=422, detail="stock_qty must be >= 0")
 
     for k, v in data.items():
         setattr(row, k, v)
@@ -72,6 +76,7 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
         price_pln=row.price_pln,
         is_active=row.is_active,
         image_url=row.image_url,
+        stock_qty=row.stock_qty,
     )
 
 
@@ -95,6 +100,7 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
         price_pln=payload.price_pln,
         is_active=payload.is_active,
         image_url=payload.image_url,
+        stock_qty=payload.stock_qty,
     )
     db.add(row)
     db.commit()
@@ -105,4 +111,6 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)):
         description=row.description,
         price_pln=row.price_pln,
         is_active=row.is_active,
+        image_url=row.image_url,
+        stock_qty=row.stock_qty,
     )
