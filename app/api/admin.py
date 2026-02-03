@@ -59,7 +59,12 @@ def delete_product(product_id: int, db: Session = Depends(get_db), _=Depends(req
 
 @router.get("/orders", response_model=list[AdminOrderOut])
 def list_orders(db: Session = Depends(get_db), _=Depends(require_admin)):
-    stmt = select(OrderDB).order_by(desc(OrderDB.created_at)).limit(100)
+    stmt = (
+        select(OrderDB)
+        .options(selectinload(OrderDB.items))
+        .order_by(desc(OrderDB.created_at))
+        .limit(100)
+    )
     orders = db.execute(stmt).scalars().all()
     return orders
 

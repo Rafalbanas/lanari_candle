@@ -1,0 +1,136 @@
+%PDF-1.4
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj
+3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 6 0 R >> >> /Contents 5 0 R >> endobj
+4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj
+5 0 obj << /Length 2414 >> stream
+BT
+/F2 20 Tf
+1 0 0 1 54 760 Tm
+(Lanari Candle - mini shop API) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 54 738 Tm
+(One-page repo summary \(Feb 3, 2026\)) Tj
+ET
+BT
+/F2 13 Tf
+1 0 0 1 54 712 Tm
+(What it is) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 54 696 Tm
+(FastAPI-based mini e-commerce backend plus static admin/landing for the Lanari Candle storefront.) Tj
+ET
+BT
+/F2 13 Tf
+1 0 0 1 54 676 Tm
+(Who it's for) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 54 660 Tm
+(Indie maker or small-shop developer needing a lightweight cart/checkout API.) Tj
+ET
+BT
+/F2 13 Tf
+1 0 0 1 54 638 Tm
+(What it does) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 622 Tm
+(- Product catalog CRUD with active flag and customer-safe soft delete.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 608 Tm
+(- Session-aware cart via cookie token; add/update/remove items and totals.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 594 Tm
+(- Checkout turns cart into order snapshot with idempotency guard against double submit.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 580 Tm
+(- JWT auth: register/login/me, bcrypt hashing, bearer-protected routes.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 566 Tm
+(- Mock payment confirmation endpoint updating order and payment statuses.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 552 Tm
+(- Admin API for products/orders + static /admin page; serves media uploads under /static.) Tj
+ET
+BT
+/F2 13 Tf
+1 0 0 1 54 532 Tm
+(How it works) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 516 Tm
+(- FastAPI app mounts routers for products, cart, orders/checkout, auth, media, admin, payments.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 502 Tm
+(- Data: SQLAlchemy models + Alembic migrations; SQLite via settings.database_url.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 488 Tm
+(- Security: JWT \(HS256\) using secret_key from .env; HTTP bearer dependency + admin guard.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 474 Tm
+(- Static/frontend: uploads in app/static/uploads served at /static; demo UI in frontend/index.html hitting /api.) Tj
+ET
+BT
+/F2 13 Tf
+1 0 0 1 54 454 Tm
+(How to run) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 438 Tm
+(1\) Create venv & deps: python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt.) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 424 Tm
+(2\) Initialize DB: alembic upgrade head \(uses SQLite file local.db by default\).) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 410 Tm
+(3\) Start API: uvicorn app.main:app --reload \(http://localhost:8000\).) Tj
+ET
+BT
+/F1 11 Tf
+1 0 0 1 64 396 Tm
+(4\) Open UI: load frontend/index.html locally; admin dashboard at http://localhost:8000/admin.) Tj
+ET
+endstream endobj
+6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >> endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000000321 00000 n 
+0000002786 00000 n 
+trailer << /Size 7 /Root 1 0 R >>
+startxref
+2861
+%%EOF

@@ -2,6 +2,8 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 
+from app.schemas.order import OrderItemOut
+
 class ProductCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -24,5 +26,6 @@ class AdminOrderOut(BaseModel):
     full_name: str
     total_pln: int
     created_at: datetime
+    items: List[OrderItemOut]
 
     model_config = {"from_attributes": True}

@@ -8,6 +8,7 @@ from app.db.database import Base
 
 class OrderStatus(StrEnum):
     NEW = "NEW"
+    IN_PREPARATION = "IN_PREPARATION"
     PAID = "PAID"
     SHIPPED = "SHIPPED"
     CANCELED = "CANCELED"

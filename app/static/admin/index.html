@@ -50,7 +50,7 @@
       <h2>Zamówienia</h2>
       <button class="btn" onclick="loadOrders()">Odśwież listę</button>
       <table id="ordersTable">
-        <thead><tr><th>ID</th><th>Data</th><th>Klient</th><th>Total (PLN)</th><th>Status</th><th>Akcje</th></tr></thead>
+        <thead><tr><th>ID</th><th>Data</th><th>Klient</th><th>Total (PLN)</th><th>Status</th><th>Pozycje</th><th>Akcje</th></tr></thead>
         <tbody></tbody>
       </table>
     </section>
@@ -157,23 +157,47 @@ async function deleteProduct(id) {
   loadProducts();
 }
 
+const STATUS_OPTIONS = ["NEW", "IN_PREPARATION", "PAID", "SHIPPED", "CANCELED"];
+
 async function loadOrders() {
   const orders = await api(API + "/orders");
   if (!orders) return;
   
   const tbody = document.querySelector("#ordersTable tbody");
-  tbody.innerHTML = orders.map(o => `
-    <tr>
-      <td>${o.id}</td>
-      <td>${new Date(o.created_at).toLocaleString()}</td>
-      <td>${o.email}</td>
-      <td>${(o.total_pln / 100).toFixed(2)}</td>
-      <td class="status-${o.status}">${o.status}</td>
-      <td>
-        <button class="btn" onclick="alert('Szczegóły w JSON: ' + JSON.stringify(${JSON.stringify(o).replace(/"/g, '&quot;')}))">Info</button>
-      </td>
-    </tr>
-  `).join("");
+  tbody.innerHTML = orders.map(o => {
+    const itemsText = (o.items || []).map(i => `${i.name} ×${i.qty} (${(i.unit_price_pln/100).toFixed(2)} PLN)`).join('<br>');
+    const json = JSON.stringify(o).replace(/"/g, '&quot;');
+    const options = STATUS_OPTIONS.map(s => `<option value="${s}" ${s === o.status ? "selected" : ""}>${s}</option>`).join("");
+    return `
+      <tr>
+        <td>${o.id}</td>
+        <td>${new Date(o.created_at).toLocaleString()}</td>
+        <td>${o.email}</td>
+        <td>${(o.total_pln / 100).toFixed(2)}</td>
+        <td class="status-${o.status}">
+          <select id="status-${o.id}">
+            ${options}
+          </select>
+        </td>
+        <td>${itemsText || '(brak pozycji)'}</td>
+        <td>
+          <button class="btn" onclick="alert('Szczegóły w JSON: ' + JSON.stringify(${json}))">Info</button>
+          <button class="btn" onclick="updateOrderStatus(${o.id})">Zapisz status</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+}
+
+async function updateOrderStatus(id) {
+  const select = document.getElementById(`status-${id}`);
+  if (!select) return;
+  const status = select.value;
+  const res = await api(API + `/orders/${id}/status`, "PATCH", { status });
+  if (res) {
+    alert("Status zaktualizowany");
+    loadOrders();
+  }
 }
 </script>
 </body>

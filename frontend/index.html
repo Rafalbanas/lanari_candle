@@ -549,6 +549,8 @@
     const res = await fetch(API_BASE + path, {
       ...opts,
       headers,
+      // Send/receive session cookie (cart_token) even when frontend is opened from file:// or 127.0.0.1:5500
+      credentials: "include",
     });
 
     const isJson = (res.headers.get("content-type") || "").includes("application/json");
@@ -923,7 +925,8 @@
       const res = await fetch(`${API_BASE}/api/media`, {
         method: "POST",
         body: fd,
-        headers
+        headers,
+        credentials: "include",
       });
       
       if (!res.ok) throw new Error("Upload failed");
