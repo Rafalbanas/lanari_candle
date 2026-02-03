@@ -37,6 +37,7 @@
       <div style="display:flex; gap:10px;">
         <input id="newProdName" placeholder="Nazwa">
         <input id="newProdPrice" placeholder="Cena (grosze)" type="number">
+        <input id="newProdImage" placeholder="URL miniatury (opcjonalnie)" style="min-width:180px;">
         <button class="btn" onclick="createProduct()">Dodaj Produkt</button>
       </div>
       <button class="btn" onclick="loadProducts()">Odśwież listę</button>
@@ -140,7 +141,7 @@ async function loadProducts() {
   tbody.innerHTML = products.map(p => `
     <tr>
       <td>${p.id}</td>
-      <td>${p.name}<br>${p.image_url ? `<img src="${p.image_url.startsWith('http') ? p.image_url : (STATIC_BASE + p.image_url)}" style="max-width:70px;max-height:70px;object-fit:cover;border:1px solid #ddd;border-radius:4px;margin-top:4px;">` : ''}</td>
+      <td>${p.name}<br>${p.image_url ? `<img src="${p.image_url.startsWith('http') ? p.image_url : (STATIC_BASE + p.image_url)}" style="max-width:70px;max-height:70px;object-fit:cover;border:1px solid #ddd;border-radius:4px;margin-top:4px;">` : '<span style="color:#888;font-size:12px;">brak miniatury</span>'}</td>
       <td>${(p.price_pln / 100).toFixed(2)}</td>
       <td>${p.is_active ? "TAK" : "NIE"}</td>
       <td>
@@ -148,6 +149,7 @@ async function loadProducts() {
         <div style="margin-top:6px;">
           <input type="file" id="img-${p.id}" accept="image/*" style="display:none" onchange="uploadProductImage(${p.id})">
           <button class="btn" onclick="document.getElementById('img-${p.id}').click()">Miniatura</button>
+          <button class="btn" onclick="promptImageUrl(${p.id})" style="margin-top:4px;">URL</button>
         </div>
       </td>
     </tr>
@@ -157,12 +159,14 @@ async function loadProducts() {
 async function createProduct() {
   const name = document.getElementById("newProdName").value;
   const price = document.getElementById("newProdPrice").value;
+  const image_url = document.getElementById("newProdImage").value || null;
   if (!name || !price) return alert("Podaj nazwę i cenę");
   
   await api(API + "/products", "POST", {
     name, 
     price_pln: parseInt(price),
-    is_active: true
+    is_active: true,
+    image_url,
   });
   loadProducts();
 }
@@ -174,6 +178,7 @@ async function uploadProductImage(id) {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("caption", `thumb:${id}`);
+  fd.append("is_public", "false");
 
   // Najpierw upload do /api/media
   const uploadRes = await fetch("/api/media", {
@@ -190,6 +195,13 @@ async function uploadProductImage(id) {
   const url = media.url;
 
   // Patch produktu z image_url
+  await api(API + `/products/${id}`, "PATCH", { image_url: url });
+  loadProducts();
+}
+
+async function promptImageUrl(id) {
+  const url = prompt("Wklej URL miniatury (np. /static/uploads/...)");
+  if (!url) return;
   await api(API + `/products/${id}`, "PATCH", { image_url: url });
   loadProducts();
 }
@@ -248,7 +260,7 @@ async function loadGallery() {
   const statusEl = document.getElementById("galleryStatus");
   statusEl.textContent = "Ładowanie...";
   try {
-    const res = await fetch("/api/media", { headers: token ? { "Authorization": `Bearer ${token}` } : {} });
+    const res = await fetch("/api/media?include_hidden=true", { headers: token ? { "Authorization": `Bearer ${token}` } : {} });
     if (!res.ok) throw new Error("Błąd pobierania");
     const items = await res.json();
     renderGallery(items);
@@ -288,6 +300,7 @@ async function uploadMedia() {
   const fd = new FormData();
   fd.append("file", file);
   fd.append("caption", captionInput.value);
+  fd.append("is_public", "true");
 
   statusEl.textContent = "Wysyłanie...";
   try {

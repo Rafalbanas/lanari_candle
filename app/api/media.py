@@ -22,6 +22,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 def upload_media(
     file: UploadFile = File(...),
     caption: str | None = Form(None),
+    is_public: bool = Form(True),
     db: Session = Depends(get_db),
     current_user: UserDB | None = Depends(get_current_user_optional),
 ):
@@ -51,6 +52,7 @@ def upload_media(
         url=url,
         caption=caption,
         owner_id=current_user.id if current_user else None,
+        is_public=is_public,
     )
     db.add(media)
     db.commit()
@@ -60,8 +62,15 @@ def upload_media(
 
 
 @router.get("", response_model=list[MediaOut])
-def list_media(db: Session = Depends(get_db)):
-    stmt = select(MediaDB).order_by(MediaDB.created_at.desc())
+def list_media(include_hidden: bool = False, db: Session = Depends(get_db), current_user: UserDB | None = Depends(get_current_user_optional)):
+    stmt = select(MediaDB)
+    if not include_hidden:
+        stmt = stmt.where(MediaDB.is_public == True)  # noqa: E712
+    else:
+        # only admins can view hidden
+        if not current_user or not current_user.is_admin:
+            raise HTTPException(status_code=403, detail="Admin only")
+    stmt = stmt.order_by(MediaDB.created_at.desc())
     return db.execute(stmt).scalars().all()
 
 

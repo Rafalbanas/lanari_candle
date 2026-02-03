@@ -126,6 +126,7 @@ class MediaDB(Base):
     url: Mapped[str] = mapped_column(String(512), nullable=False)
     caption: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
 class PaymentAttemptDB(Base):
