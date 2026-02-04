@@ -1,6 +1,6 @@
 from enum import StrEnum
 from datetime import datetime, UTC
-from sqlalchemy import Integer, String, Boolean, Text, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Integer, String, Boolean, Text, DateTime, ForeignKey, UniqueConstraint, Enum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
@@ -18,6 +18,13 @@ class PaymentStatus(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
 
+
+class ShippingMethod(StrEnum):
+    INPOST_LOCKER = "INPOST_LOCKER"
+    COURIER = "COURIER"
+    PICKUP = "PICKUP"
+
+
 class UserDB(Base):
     __tablename__ = "users"
 
@@ -28,6 +35,27 @@ class UserDB(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+    profile: Mapped["CustomerProfileDB"] = relationship(back_populates="user", uselist=False)
+
+
+class CustomerProfileDB(Base):
+    __tablename__ = "customer_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+
+    first_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    address_line1: Mapped[str] = mapped_column(String(120), nullable=False)
+    address_line2: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str] = mapped_column(String(80), nullable=False)
+    postal_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    country: Mapped[str] = mapped_column(String(2), nullable=False, default="PL")
+
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
+
+    user: Mapped["UserDB"] = relationship(back_populates="profile")
 
 class ProductDB(Base):
     __tablename__ = "products"
@@ -48,6 +76,9 @@ class CartDB(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False)
     is_checked_out: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True, nullable=True)
+
+    shipping_method: Mapped[ShippingMethod | None] = mapped_column(Enum(ShippingMethod, name="shippingmethod"), nullable=True)
+    shipping_cost_pln: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     items: Mapped[list["CartItemDB"]] = relationship(
         back_populates="cart",
@@ -90,7 +121,20 @@ class OrderDB(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    buyer_first_name: Mapped[str] = mapped_column(String(60), nullable=False)
+    buyer_last_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    buyer_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    buyer_email: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    shipping_address_line1: Mapped[str] = mapped_column(String(120), nullable=False)
+    shipping_address_line2: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    shipping_city: Mapped[str] = mapped_column(String(80), nullable=False)
+    shipping_postal_code: Mapped[str] = mapped_column(String(10), nullable=False)
     total_pln: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    shipping_method: Mapped[ShippingMethod] = mapped_column(Enum(ShippingMethod, name="shippingmethod"), nullable=False)
+    shipping_cost_pln: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    shipping_country: Mapped[str] = mapped_column(String(2), nullable=False, default="PL")
 
     items: Mapped[list["OrderItemDB"]] = relationship(
         back_populates="order",

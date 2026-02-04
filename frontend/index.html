@@ -381,6 +381,31 @@
     .modal-footer { padding: 16px; border-top: 1px solid var(--border); text-align:right; }
     .modal-row { display:flex; justify-content:space-between; margin-bottom:8px; }
     .modal-row strong { color: var(--text); }
+
+    .form-grid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px 14px;
+    }
+    .form-grid label{
+      display:block;
+      margin-bottom:4px;
+      font-size:12px;
+      color: var(--muted);
+    }
+    .form-grid input{
+      width:100%;
+      padding:10px 12px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      outline:none;
+    }
+    .form-grid input:focus{
+      border-color: rgba(124,58,237,.6);
+      box-shadow: 0 0 0 1px rgba(124,58,237,.3);
+    }
   </style>
 </head>
 
@@ -474,13 +499,30 @@
         <div class="cart-items" id="cartList"></div>
         <div class="empty" id="cartEmpty" style="display:none;">Koszyk pusty.</div>
 
+        <div class="shipping-box" id="shippingBox" style="display:none; margin-top:12px; padding:12px; border:1px solid var(--border); border-radius:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-weight:700;">Metoda dostawy</div>
+            <div id="freeShipNote" style="font-size:12px; color:var(--muted);"></div>
+          </div>
+          <div id="shippingOptions" style="display:flex; flex-direction:column; gap:6px;"></div>
+          <div class="errbox" id="shippingErr"></div>
+        </div>
+
         <div class="summary">
           <div class="sum-row">
-            <div class="label">Suma</div>
+            <div class="label">Produkty</div>
+            <div class="value" id="cartSubtotal">0,00 zł</div>
+          </div>
+          <div class="sum-row">
+            <div class="label">Dostawa</div>
+            <div class="value" id="cartShipping">—</div>
+          </div>
+          <div class="sum-row" style="border-top:1px solid var(--border); padding-top:8px; margin-top:4px;">
+            <div class="label">Razem</div>
             <div class="value" id="cartTotal">0,00 zł</div>
           </div>
           <button class="btn primary" id="checkoutBtn" disabled>Przejdź do checkout →</button>
-          <div class="footer-note">Checkout dodamy jako następny krok (email + imię + idempotency).</div>
+          <div class="footer-note">Zaloguj się, wybierz dostawę i uzupełnij dane kupującego.</div>
         </div>
 
         <div class="errbox" id="cartErr"></div>
@@ -503,13 +545,110 @@
   </div>
 </div>
 
+<!-- CHECKOUT FORM MODAL -->
+<div id="checkoutModal" class="modal-overlay">
+  <div class="modal" style="width:min(720px, 95vw);">
+    <div class="modal-header">
+      <h3>Dane kupującego</h3>
+      <button class="btn ghost" onclick="closeCheckoutModal()" style="padding:4px 10px;">✕</button>
+    </div>
+    <div class="modal-content">
+      <div id="checkoutErr" class="errbox"></div>
+      <form id="checkoutForm" class="form-grid">
+        <div>
+          <label>Imię</label>
+          <input type="text" id="co_first_name" required minlength="2" maxlength="60">
+        </div>
+        <div>
+          <label>Nazwisko</label>
+          <input type="text" id="co_last_name" required minlength="2" maxlength="80">
+        </div>
+        <div>
+          <label>Telefon</label>
+          <input type="tel" id="co_phone" required placeholder="+48500100200" pattern="\\+?\\d{9,15}">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label>Ulica i numer</label>
+          <input type="text" id="co_address_line1" required minlength="5" maxlength="120">
+        </div>
+        <div style="grid-column:1/-1;">
+          <label>Adres (cd.) <span style="color:var(--muted);">(opcjonalnie)</span></label>
+          <input type="text" id="co_address_line2" maxlength="120" placeholder="mieszkanie, piętro">
+        </div>
+        <div>
+          <label>Miasto</label>
+          <input type="text" id="co_city" required minlength="2" maxlength="80">
+        </div>
+        <div>
+          <label>Kod pocztowy</label>
+          <input type="text" id="co_postal_code" required placeholder="00-001" pattern="\\d{2}-\\d{3}">
+        </div>
+        <div>
+          <label>Kraj</label>
+          <input type="text" id="co_country" value="PL" readonly>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer" style="justify-content:space-between;">
+      <div style="font-size:12px; color:var(--muted)">Dane zapiszą się w profilu i jako snapshot w zamówieniu.</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn ghost" onclick="closeCheckoutModal()">Anuluj</button>
+        <button class="btn primary" id="checkoutSubmitBtn">Zamawiam</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toasts"></div>
 
 <script>
   // === konfiguracja ===
-  const API_BASE = "http://127.0.0.1:8000";
-  document.getElementById("apiBaseLabel").textContent = `Backend: ${API_BASE}`;
-  const STATIC_BASE = API_BASE; // bo mountujemy /static w main.py
+  // API base autodetect + override via localStorage or ?api=https://host
+  let API_BASE = "http://127.0.0.1:8000";
+  let STATIC_BASE = API_BASE; // aktualizowane po wykryciu
+
+  async function probeApi(base) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    try {
+      const res = await fetch(`${base.replace(/\/$/, "")}/health`, { signal: controller.signal, credentials: "include" });
+      return res.ok;
+    } catch (_) {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function configureApiBase() {
+    const params = new URLSearchParams(window.location.search);
+    const paramApi = params.get("api");
+    const storedApi = localStorage.getItem("lanari_api_base");
+    const origin = (window.location.origin && window.location.origin.startsWith("http")) ? window.location.origin : null;
+    const fallbacks = [
+      paramApi,
+      storedApi,
+      origin,
+      "http://127.0.0.1:8000",
+      "http://localhost:8000",
+    ].filter(Boolean).map(u => u.replace(/\/$/, ""));
+
+    for (const candidate of fallbacks) {
+      const ok = await probeApi(candidate);
+      if (ok) {
+        API_BASE = candidate;
+        STATIC_BASE = candidate;
+        localStorage.setItem("lanari_api_base", candidate);
+        document.getElementById("apiBaseLabel").textContent = `Backend: ${candidate}`;
+        return;
+      }
+    }
+    // jeśli żaden nie zadziałał, zostaw pierwszy z listy lub domyślny
+    API_BASE = fallbacks[0] || API_BASE;
+    STATIC_BASE = API_BASE;
+    localStorage.setItem("lanari_api_base", API_BASE);
+    document.getElementById("apiBaseLabel").textContent = `Backend (offline?): ${API_BASE}`;
+  }
 
   // === helpers ===
   const fmtPLN = (grosze) => (grosze / 100).toFixed(2).replace(".", ",") + " zł";
@@ -553,7 +692,10 @@
 
     if (!res.ok) {
       const msg = typeof data === "string" ? data : JSON.stringify(data, null, 2);
-      throw new Error(`${res.status} ${res.statusText}\n${msg}`);
+      const err = new Error(`${res.status} ${res.statusText}\n${msg}`);
+      err.status = res.status;
+      err.body = data;
+      throw err;
     }
     return data;
   }
@@ -641,6 +783,8 @@
   // === state ===
   let productsCache = [];
   let cartCache = null;
+  let checkoutProfileCache = null;
+  const LAST_CHECKOUT_KEY = "lanari_last_checkout";
 
   // === render ===
   function renderProducts(products) {
@@ -721,8 +865,13 @@
     const items = cart?.items || [];
     byId("cartEmpty").style.display = items.length ? "none" : "block";
 
+    byId("cartSubtotal").textContent = fmtPLN(cart?.subtotal_pln || 0);
+    byId("cartShipping").textContent = cart?.shipping_method
+      ? `${cart.shipping_method.replaceAll("_", " ")} • ${fmtPLN(cart.shipping_cost_pln || 0)}`
+      : "—";
     byId("cartTotal").textContent = fmtPLN(cart?.total_pln || 0);
     byId("checkoutBtn").disabled = items.length === 0;
+    byId("shippingBox").style.display = items.length ? "block" : "none";
 
     for (const it of items) {
       const row = document.createElement("div");
@@ -797,6 +946,15 @@
 
       el.appendChild(row);
     }
+
+    // Gdy są pozycje, doładuj dostępne metody dostawy
+    if (items.length) {
+      loadShippingMethods(cart.id, cart.subtotal_pln, cart.shipping_method);
+    } else {
+      byId("shippingOptions").innerHTML = "";
+      showErr("shippingErr", "");
+      byId("freeShipNote").textContent = "";
+    }
   }
 
   function showErr(id, msg) {
@@ -827,6 +985,76 @@
       renderCart(cartCache);
     } catch (e) {
       showErr("cartErr", e.message);
+    }
+  }
+
+  async function loadShippingMethods(cartId, subtotal, selected) {
+    try {
+      const data = await api(`/api/shipping/methods?cart_id=${cartId}`);
+      renderShippingMethods(data, selected);
+    } catch (e) {
+      showErr("shippingErr", e.message);
+    }
+  }
+
+  function renderShippingMethods(data, selected) {
+    const box = byId("shippingOptions");
+    box.innerHTML = "";
+    showErr("shippingErr", "");
+
+    if (!data || !data.methods) return;
+
+    const initialChoice = selected || data.selected?.method || data.methods[0]?.method;
+    const shouldAutoselect = !cartCache?.shipping_method && initialChoice;
+
+    byId("freeShipNote").textContent = `Darmowa od ${fmtPLN(data.free_shipping_threshold_pln)}.`;
+
+    for (const m of data.methods) {
+      const wrapper = document.createElement("label");
+      wrapper.style.display = "flex";
+      wrapper.style.alignItems = "center";
+      wrapper.style.gap = "8px";
+      wrapper.style.cursor = "pointer";
+
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "shipping";
+      input.value = m.method;
+      input.checked = m.method === initialChoice;
+
+      const priceLabel = m.is_free ? "0,00 zł" : fmtPLN(m.cost_pln);
+      const title = m.method.replaceAll("_", " ");
+
+      const text = document.createElement("div");
+      text.innerHTML = `<strong>${title}</strong> <span style="color:var(--muted)">• ${priceLabel}</span>`;
+
+      input.addEventListener("change", () => {
+        selectShippingMethod(m.method);
+      });
+
+      wrapper.appendChild(input);
+      wrapper.appendChild(text);
+      box.appendChild(wrapper);
+    }
+
+    if (shouldAutoselect && initialChoice) {
+      selectShippingMethod(initialChoice);
+    }
+  }
+
+  async function selectShippingMethod(method) {
+    try {
+      if (!cartCache?.id) throw new Error("Brak koszyka");
+      await api(`/api/cart/shipping?cart_id=${cartCache.id}`, {
+        method: "POST",
+        body: JSON.stringify({ shipping_method: method }),
+      });
+      // odśwież koszyk i metody (mogą się zmienić koszt/free)
+      const cart = await api(`/api/cart`);
+      cartCache = cart;
+      renderCart(cartCache);
+    } catch (e) {
+      showErr("shippingErr", e.message || "Nie udało się ustawić dostawy");
     }
   }
 
@@ -952,39 +1180,97 @@
       toast("err", "Błąd", "Musisz się zalogować, aby złożyć zamówienie");
       return;
     }
-
-    // Generujemy prosty klucz idempotencyjności
-    const idempotencyKey = Math.random().toString(36).substring(2) + Date.now().toString(36);
-
-    // Fix: Zawsze wysyłamy cart_id, aby backend wiedział, który koszyk realizujemy.
-    const cartId = cartCache?.id || getCartId();
-    if (!cartId) {
-      return toast("err", "Błąd", "Brak ID koszyka. Odśwież stronę.");
+    if (!cartCache?.items?.length) {
+      return toast("err", "Koszyk pusty", "Dodaj produkty do koszyka.");
     }
+    if (!cartCache?.shipping_method) {
+      return toast("err", "Brak dostawy", "Wybierz metodę dostawy.");
+    }
+    await openCheckoutModal();
+  });
+
+  async function openCheckoutModal() {
+    showErr("checkoutErr", "");
+    // Zawsze próbuj pobrać aktualny profil (prefill)
+    try {
+      checkoutProfileCache = await api("/api/me/checkout-profile");
+    } catch (e) {
+      checkoutProfileCache = null;
+      // Nie pokazujemy błędu w UI – fallback do lokalnego cache
+    }
+    // Local fallback: ostatni udany checkout zapisany w localStorage
+    let lastLocal = null;
+    try {
+      lastLocal = JSON.parse(localStorage.getItem(LAST_CHECKOUT_KEY) || "null");
+    } catch (_) { /* ignore */ }
+
+    const p = checkoutProfileCache || lastLocal || {};
+    byId("co_first_name").value = p.first_name || (currentUser?.full_name?.split(" ")[0] || "");
+    byId("co_last_name").value = p.last_name || (currentUser?.full_name?.split(" ").slice(1).join(" ") || "");
+    byId("co_phone").value = p.phone || "";
+    byId("co_address_line1").value = p.address_line1 || "";
+    byId("co_address_line2").value = p.address_line2 || "";
+    byId("co_city").value = p.city || "";
+    byId("co_postal_code").value = p.postal_code || "";
+    byId("co_country").value = p.country || "PL";
+
+    byId("checkoutModal").style.display = "flex";
+  }
+  function closeCheckoutModal() { byId("checkoutModal").style.display = "none"; }
+  window.closeCheckoutModal = closeCheckoutModal;
+
+  byId("checkoutSubmitBtn").addEventListener("click", async () => {
+    showErr("checkoutErr", "");
+    if (!cartCache?.shipping_method) {
+      return showErr("checkoutErr", "Wybierz metodę dostawy.");
+    }
+    const cartId = cartCache?.id || getCartId();
+    if (!cartId) return showErr("checkoutErr", "Brak ID koszyka (spróbuj odświeżyć stronę).");
 
     const payload = {
       cart_id: cartId,
-      email: currentUser.email,
-      full_name: currentUser.full_name || currentUser.email.split("@")[0]
+      first_name: byId("co_first_name").value.trim(),
+      last_name: byId("co_last_name").value.trim(),
+      phone: byId("co_phone").value.trim(),
+      address_line1: byId("co_address_line1").value.trim(),
+      address_line2: byId("co_address_line2").value.trim() || null,
+      city: byId("co_city").value.trim(),
+      postal_code: byId("co_postal_code").value.trim(),
+      country: byId("co_country").value.trim() || "PL",
+      shipping_method: cartCache.shipping_method,
     };
 
+    // prosta walidacja frontowa
+    const phoneOk = /^\+?\d{9,15}$/.test(payload.phone);
+    const pcOk = /^\d{2}-\d{3}$/.test(payload.postal_code);
+    if (!phoneOk) return showErr("checkoutErr", "Telefon: użyj formatu +48500100200 (9-15 cyfr).");
+    if (!pcOk) return showErr("checkoutErr", "Kod pocztowy: format 00-000.");
+    if (payload.first_name.length < 2 || payload.last_name.length < 2) return showErr("checkoutErr", "Imię/nazwisko za krótkie.");
+    if (payload.address_line1.length < 5) return showErr("checkoutErr", "Ulica: min 5 znaków.");
+
+    const idempotencyKey = Math.random().toString(36).substring(2) + Date.now().toString(36);
+
     try {
-      const order = await api("/api/orders", {
+      const order = await api("/api/checkout", {
         method: "POST",
         body: JSON.stringify(payload),
         headers: { "Idempotency-Key": idempotencyKey }
       });
-
+      // zapisz ostatni payload lokalnie + w cache
+      localStorage.setItem(LAST_CHECKOUT_KEY, JSON.stringify(payload));
+      checkoutProfileCache = payload;
+      closeCheckoutModal();
       showOrderModal(order);
-      // Czyścimy lokalny koszyk
       await loadCart();
-      // Po zakupie odświeżamy produkty, żeby zaciągnąć nowy stan magazynu
       await loadProducts();
+      checkoutProfileCache = payload; // optimistic cache
     } catch (e) {
-      toast("err", "Błąd zamówienia", e.message);
-      if ((e.message || "").toLowerCase().includes("stock")) {
-        await loadProducts();
-      }
+      const message = (e && e.message) || "";
+      const isNetwork = message.toLowerCase().includes("load failed") || message.toLowerCase().includes("failed to fetch") || message.toLowerCase().includes("typeerror");
+      const friendly = isNetwork
+        ? `Nie udało się połączyć z API (${API_BASE}). Upewnij się, że backend działa i CORS/https nie blokuje żądania.`
+        : message || "Nie udało się złożyć zamówienia.";
+      showErr("checkoutErr", friendly);
     }
   });
 
@@ -1020,12 +1306,16 @@
     byId("productsPanel").style.display = "block";
   });
 
-  // init
-  (async function init() {
+  async function init() {
     await loadUser(); // check auth
     await loadProducts();
     await loadCart();
     await loadFeed();
+  }
+
+  (async () => {
+    await configureApiBase();
+    await init();
   })();
 </script>
 </body>

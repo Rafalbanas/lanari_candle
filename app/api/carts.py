@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.db.deps import get_db
-from app.db.models import CartDB, CartItemDB, ProductDB
+from app.db.models import CartDB, CartItemDB, ProductDB, ShippingMethod
 from app.schemas.cart import CartItemAdd, CartOut, CartItemOut, CartItemUpdate
+from app.core.shipping import calculate_shipping
 from app.db.cart_service import get_or_create_cart
 
 router = APIRouter(prefix="/cart", tags=["cart"])
@@ -91,11 +92,11 @@ def _cart_out(cart: CartDB, db: Session) -> CartOut:
     items = cart.items
 
     out_items: list[CartItemOut] = []
-    total = 0
+    subtotal = 0
 
     for it in items:
         line_total = it.qty * it.unit_price_pln
-        total += line_total
+        subtotal += line_total
         out_items.append(
             CartItemOut(
                 id=it.id,
@@ -107,4 +108,23 @@ def _cart_out(cart: CartDB, db: Session) -> CartOut:
             )
         )
 
-    return CartOut(id=cart.id, items=out_items, total_pln=total)
+    shipping_cost = 0
+    if cart.shipping_method:
+        try:
+            shipping_cost = calculate_shipping(subtotal, cart.shipping_method)
+        except ValueError:
+            shipping_cost = cart.shipping_cost_pln or 0
+        else:
+            if shipping_cost != cart.shipping_cost_pln:
+                cart.shipping_cost_pln = shipping_cost
+                db.add(cart)
+                db.flush()
+
+    return CartOut(
+        id=cart.id,
+        items=out_items,
+        subtotal_pln=subtotal,
+        shipping_method=cart.shipping_method,
+        shipping_cost_pln=shipping_cost,
+        total_pln=subtotal + shipping_cost,
+    )

@@ -1,6 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
+from app.db.models import ShippingMethod
+
 
 class CartItemAdd(BaseModel):
     product_id: int
@@ -23,4 +25,7 @@ class CartItemOut(BaseModel):
 class CartOut(BaseModel):
     id: int
     items: List[CartItemOut]
+    subtotal_pln: int
+    shipping_method: ShippingMethod | None = None
+    shipping_cost_pln: int
     total_pln: int

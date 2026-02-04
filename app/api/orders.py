@@ -1,10 +1,24 @@
+from datetime import datetime, UTC
 from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response
-from sqlalchemy.orm import Session, selectinload, joinedload
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, delete
 
 from app.db.deps import get_db
 from app.api.deps import get_current_user
-from app.db.models import CartDB, CartItemDB, OrderDB, OrderItemDB, OrderStatus, UserDB, PaymentAttemptDB, PaymentStatus, ProductDB
+from app.db.models import (
+    CartDB,
+    CartItemDB,
+    OrderDB,
+    OrderItemDB,
+    OrderStatus,
+    UserDB,
+    PaymentAttemptDB,
+    PaymentStatus,
+    ProductDB,
+    ShippingMethod,
+    CustomerProfileDB,
+)
+from app.core.shipping import calculate_shipping
 from app.schemas.order import OrderCreate, OrderOut, OrderItemOut, CheckoutRequest
 from app.db.cart_service import get_or_create_cart
 
@@ -53,6 +67,9 @@ def checkout(
     if not cart.items:
         raise HTTPException(status_code=400, detail="Cart is empty")
 
+    if payload.country != "PL":
+        raise HTTPException(status_code=400, detail="Shipping only available in PL")
+
     # 4. Prepare order items (snapshot)
     total_grosze = 0
     order_items_db = []
@@ -85,19 +102,88 @@ def checkout(
         )
         touched_products.append((product, it.qty))
 
-    # 5. Transaction: Create Order + Clear Cart
+    # 5. Shipping selection: allow inline selection, otherwise require previously set
+    if cart.shipping_method is None:
+        if payload.shipping_method is None:
+            raise HTTPException(status_code=400, detail="Shipping method required")
+        try:
+            method = ShippingMethod(payload.shipping_method)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Unknown shipping method")
+        try:
+            shipping_cost = calculate_shipping(total_grosze, method)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Unknown shipping method")
+        cart.shipping_method = method
+        cart.shipping_cost_pln = shipping_cost
+        db.add(cart)
+        db.flush()
+    else:
+        try:
+            shipping_cost = calculate_shipping(total_grosze, cart.shipping_method)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Unknown shipping method")
+
+    cart.shipping_cost_pln = shipping_cost
+    total_with_shipping = total_grosze + shipping_cost
+
     try:
+        buyer_full_name = f"{payload.first_name} {payload.last_name}".strip()
         order = OrderDB(
             cart_id=cart.id,
             email=current_user.email,  # Używamy emaila z tokena (bezpieczniej)
-            full_name=current_user.full_name or payload.full_name,  # Preferujemy imię z konta
-            total_pln=total_grosze, # DB stores integers (grosze), despite the column name
+            full_name=buyer_full_name,
+            buyer_first_name=payload.first_name,
+            buyer_last_name=payload.last_name,
+            buyer_phone=payload.phone,
+            buyer_email=current_user.email,
+            shipping_address_line1=payload.address_line1,
+            shipping_address_line2=payload.address_line2,
+            shipping_city=payload.city,
+            shipping_postal_code=payload.postal_code,
+            total_pln=total_with_shipping,
             status=OrderStatus.NEW,
             idempotency_key=idempotency_key, # Zostawiamy w OrderDB dla spójności, ale główna kontrola w PaymentAttempt
-            items=order_items_db
+            items=order_items_db,
+            shipping_method=cart.shipping_method,
+            shipping_cost_pln=shipping_cost,
+            shipping_country=payload.country,
         )
         db.add(order)
-        
+        db.flush()  # ensure order.id is assigned before payment attempt
+
+        # Upsert customer profile
+        profile = db.execute(
+            select(CustomerProfileDB).where(CustomerProfileDB.user_id == current_user.id)
+        ).scalar_one_or_none()
+        now = datetime.now(UTC)
+        if profile:
+            profile.first_name = payload.first_name
+            profile.last_name = payload.last_name
+            profile.phone = payload.phone
+            profile.address_line1 = payload.address_line1
+            profile.address_line2 = payload.address_line2
+            profile.city = payload.city
+            profile.postal_code = payload.postal_code
+            profile.country = payload.country
+            profile.updated_at = now
+            db.add(profile)
+        else:
+            db.add(
+                CustomerProfileDB(
+                    user_id=current_user.id,
+                    first_name=payload.first_name,
+                    last_name=payload.last_name,
+                    phone=payload.phone,
+                    address_line1=payload.address_line1,
+                    address_line2=payload.address_line2,
+                    city=payload.city,
+                    postal_code=payload.postal_code,
+                    country=payload.country,
+                    updated_at=now,
+                )
+            )
+
         # Mark cart as checked out
         cart.is_checked_out = True
         db.add(cart)
@@ -105,7 +191,7 @@ def checkout(
         # Create Payment Attempt if idempotency key provided (or generate one)
         if idempotency_key:
             payment = PaymentAttemptDB(
-                order_id=order.id, # Będzie dostępne po flush, ale SQLAlchemy ogarnie to w sesji
+                order_id=order.id,
                 provider="mock",
                 status=PaymentStatus.PENDING,
                 idempotency_key=idempotency_key
@@ -140,7 +226,18 @@ def create_order(
     current_user: UserDB = Depends(get_current_user)
 ):
     # Legacy wrapper using the new logic
-    req = CheckoutRequest(cart_id=payload.cart_id, email=payload.email, full_name=payload.full_name)
+    req = CheckoutRequest(
+        cart_id=payload.cart_id,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        phone=payload.phone,
+        address_line1=payload.address_line1,
+        address_line2=payload.address_line2,
+        city=payload.city,
+        postal_code=payload.postal_code,
+        country=payload.country,
+        shipping_method=payload.shipping_method,
+    )
     return checkout(request, response, req, db=db, current_user=current_user, idempotency_key=None)
 
 
@@ -187,6 +284,17 @@ def _order_out(order: OrderDB) -> OrderOut:
         status=order.status,
         email=order.email,
         full_name=order.full_name,
+        buyer_first_name=order.buyer_first_name,
+        buyer_last_name=order.buyer_last_name,
+        buyer_phone=order.buyer_phone,
+        buyer_email=order.buyer_email,
+        shipping_address_line1=order.shipping_address_line1,
+        shipping_address_line2=order.shipping_address_line2,
+        shipping_city=order.shipping_city,
+        shipping_postal_code=order.shipping_postal_code,
         items=out_items,
         total_pln=order.total_pln,
+        shipping_method=order.shipping_method,
+        shipping_cost_pln=order.shipping_cost_pln,
+        shipping_country=order.shipping_country,
     )
