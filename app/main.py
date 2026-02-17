@@ -13,6 +13,7 @@ from app.api.media import router as media_router
 from app.api.admin import router as admin_router
 from app.api.shipping import router as shipping_router
 from app.api.profiles import router as profiles_router
+from app.api.forecast import router as forecast_router
 
 app = FastAPI(title=settings.app_name, debug=settings.debug)
 
@@ -44,6 +45,7 @@ app.include_router(shipping_router, prefix=settings.api_prefix)
 app.include_router(auth_router, prefix=settings.api_prefix)
 app.include_router(media_router, prefix=settings.api_prefix)
 app.include_router(profiles_router, prefix=settings.api_prefix)
+app.include_router(forecast_router, prefix=settings.api_prefix)
 app.include_router(admin_router) # Bez prefixu api, bo to admin
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

@@ -19,6 +19,9 @@
     .status-PAID { color: green; font-weight: bold; }
     .status-SHIPPED { color: purple; }
     .status-CANCELED { color: red; text-decoration: line-through; }
+    .risk-HIGH { color: #dc3545; font-weight: bold; }
+    .risk-MED { color: #f0ad4e; font-weight: bold; }
+    .risk-LOW { color: #28a745; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -58,6 +61,60 @@
     </section>
 
     <section>
+      <h2>Prognozy popytu (MVP)</h2>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <label>Data:
+          <input type="date" id="forecastDate">
+        </label>
+        <label>Tygodnie:
+          <select id="forecastWeeks">
+            <option value="8" selected>8</option>
+            <option value="12">12</option>
+            <option value="16">16</option>
+          </select>
+        </label>
+        <label>Statusy:
+          <input id="forecastStatuses" placeholder="PAID,PACKED,SHIPPED,DELIVERED" value="PAID,PACKED,SHIPPED,DELIVERED">
+        </label>
+        <label>
+          <input type="checkbox" id="forecastIncludeZeros">
+          Uwzględnij zera
+        </label>
+        <label>Risk:
+          <select id="forecastRiskFilter">
+            <option value="ALL" selected>Wszystkie</option>
+            <option value="HIGH">HIGH</option>
+            <option value="MED">MED</option>
+            <option value="LOW">LOW</option>
+          </select>
+        </label>
+        <label>Sort:
+          <select id="forecastSort">
+            <option value="risk_forecast" selected>Risk ↓, Prognoza ↓</option>
+            <option value="forecast_desc">Prognoza ↓</option>
+            <option value="stock_asc">Stock ↑</option>
+            <option value="name_asc">Nazwa A→Z</option>
+          </select>
+        </label>
+        <button class="btn" onclick="loadForecast()">Policz</button>
+      </div>
+      <table id="forecastTable">
+        <thead>
+          <tr>
+            <th>Produkt</th>
+            <th>Stock</th>
+            <th>Prognoza (avg)</th>
+            <th>Prognoza (ceil)</th>
+            <th>Risk</th>
+            <th>Próba (n)</th>
+            <th>Trend</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section>
       <h2>Galeria (upload)</h2>
       <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
         <input type="file" id="galleryFile" accept="image/*">
@@ -74,6 +131,7 @@
 const API = "/admin/api"; // Proxy w main.py lub bezpośrednio
 let token = localStorage.getItem("admin_token");
 const STATIC_BASE = ""; // ten sam host
+let forecastCache = null;
 
 if (token) showDashboard();
 
@@ -132,6 +190,7 @@ function showDashboard() {
   document.getElementById("dashboard").style.display = "block";
   loadProducts();
   loadOrders();
+  initForecastDefaults();
 }
 
 async function loadProducts() {
@@ -260,6 +319,103 @@ async function loadOrders() {
       </tr>
     `;
   }).join("");
+}
+
+function initForecastDefaults() {
+  const input = document.getElementById("forecastDate");
+  if (!input) return;
+  const now = new Date();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const yyyy = tomorrow.getFullYear();
+  const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
+  const dd = String(tomorrow.getDate()).padStart(2, "0");
+  input.value = `${yyyy}-${mm}-${dd}`;
+  document.getElementById("forecastRiskFilter").addEventListener("change", renderForecastTable);
+  document.getElementById("forecastSort").addEventListener("change", renderForecastTable);
+}
+
+async function loadForecast() {
+  const date = document.getElementById("forecastDate").value;
+  const weeks = document.getElementById("forecastWeeks").value || 8;
+  const statuses = document.getElementById("forecastStatuses").value || "";
+  const includeZeros = document.getElementById("forecastIncludeZeros").checked;
+  const params = new URLSearchParams();
+  if (date) params.set("date", date);
+  params.set("weeks", weeks);
+  if (statuses) params.set("statuses", statuses);
+  if (includeZeros) params.set("include_zeros", "true");
+
+  const data = await api(API + `/forecast/demand?${params.toString()}`);
+  if (!data) return;
+  forecastCache = data.items || [];
+  renderForecastTable();
+}
+
+function renderForecastTable() {
+  const tbody = document.querySelector("#forecastTable tbody");
+  if (!tbody) return;
+  const riskFilter = document.getElementById("forecastRiskFilter").value;
+  const sortMode = document.getElementById("forecastSort").value;
+
+  let items = (forecastCache || []).slice();
+  if (riskFilter && riskFilter !== "ALL") {
+    items = items.filter(i => i.risk === riskFilter);
+  }
+
+  const riskRank = { HIGH: 3, MED: 2, LOW: 1 };
+  items.sort((a, b) => {
+    if (sortMode === "forecast_desc") {
+      return (b.forecast_qty || 0) - (a.forecast_qty || 0);
+    }
+    if (sortMode === "stock_asc") {
+      return (a.stock_qty || 0) - (b.stock_qty || 0);
+    }
+    if (sortMode === "name_asc") {
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    }
+    // default: risk desc then forecast desc
+    const r = (riskRank[b.risk] || 0) - (riskRank[a.risk] || 0);
+    if (r !== 0) return r;
+    return (b.forecast_qty || 0) - (a.forecast_qty || 0);
+  });
+
+  if (!items.length) {
+    tbody.innerHTML = `<tr><td colspan="7" style="color:#777;">Brak danych do prognozy.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(i => `
+    <tr>
+      <td>${i.name} (#${i.product_id})</td>
+      <td>${i.stock_qty}</td>
+      <td>${Number(i.forecast_qty).toFixed(2)}</td>
+      <td>${i.forecast_qty_ceil}</td>
+      <td class="risk-${i.risk}">${i.risk}</td>
+      <td>${i.samples}</td>
+      <td>${renderSparkline(i.last_matching_days_qty || [])}</td>
+    </tr>
+  `).join("");
+}
+
+function renderSparkline(values) {
+  const w = 120, h = 28, pad = 2;
+  if (!values.length) {
+    return `<span style="color:#999;">—</span>`;
+  }
+  const max = Math.max(1, ...values);
+  const min = Math.min(0, ...values);
+  const span = max - min || 1;
+  const step = values.length > 1 ? (w - pad * 2) / (values.length - 1) : 0;
+  const points = values.map((v, idx) => {
+    const x = pad + idx * step;
+    const y = h - pad - ((v - min) / span) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+      <polyline fill="none" stroke="#6c757d" stroke-width="2" points="${points}" />
+    </svg>
+  `;
 }
 
 async function updateOrderStatus(id) {
